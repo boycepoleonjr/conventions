@@ -1,0 +1,12 @@
+{
+  "description": "Node.js web app (Next.js, Astro, Vite, React)",
+  "commands": {
+    "install": "npm ci",
+    "lint": "npm run lint",
+    "typecheck": "npx tsc --noEmit",
+    "test": "npm test",
+    "build": "npm run build",
+    "audit": "npm audit --audit-level=high"
+  },
+  "dependabot": ["npm", "github-actions"]
+}

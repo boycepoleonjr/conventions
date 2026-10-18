@@ -1,0 +1,12 @@
+{
+  "description": "Cloudflare Worker or other Node.js service deployed with Wrangler",
+  "commands": {
+    "install": "npm ci",
+    "lint": "npm run lint",
+    "typecheck": "npx tsc --noEmit",
+    "test": "npm test",
+    "build": "npx wrangler deploy --dry-run",
+    "audit": "npm audit --audit-level=high"
+  },
+  "dependabot": ["npm", "github-actions"]
+}

@@ -1,0 +1,4 @@
+# Synced from boycepoleonjr/conventions v{{conventions.version}}. Edit there, or add "dependabot" to "skip" in .conventions.json.
+version: 2
+updates:
+{{dependabot_updates}}

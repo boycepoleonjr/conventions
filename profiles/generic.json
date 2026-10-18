@@ -1,0 +1,12 @@
+{
+  "description": "Any other stack. Fill commands in .conventions.json",
+  "commands": {
+    "install": "",
+    "lint": "",
+    "typecheck": "",
+    "test": "",
+    "build": "",
+    "audit": ""
+  },
+  "dependabot": ["github-actions"]
+}

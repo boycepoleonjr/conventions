@@ -1,0 +1,25 @@
+# Synced from boycepoleonjr/conventions v{{conventions.version}}.
+# Weekly report: is this repo behind the latest conventions, or edited by hand? Never fails required checks.
+name: Conventions check
+on:
+  schedule:
+    - cron: "17 13 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Fetch pinned conventions
+        run: |
+          REF=$(node -p "'v' + require('./.conventions.lock.json').version")
+          git clone --depth 1 --branch "$REF" https://github.com/boycepoleonjr/conventions /tmp/conventions
+          LATEST=$(git ls-remote --tags --refs https://github.com/boycepoleonjr/conventions 'v*' | sed 's#.*refs/tags/##' | sort -V | tail -1)
+          echo "Pinned: $REF  Latest: $LATEST" >> "$GITHUB_STEP_SUMMARY"
+      - name: Drift report
+        run: node /tmp/conventions/scripts/sync.mjs --repo . --check | tee -a "$GITHUB_STEP_SUMMARY" || echo "::warning::Conventions drift found; see summary"
