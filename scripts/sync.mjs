@@ -83,7 +83,7 @@ function vars(cfg, version) {
   const commands_list = listed.length ? listed.map(([k, v]) => `- ${k}: \`${v}\``).join("\n") : "- TODO: add commands to .conventions.json";
   const ecos = cfg.dependabot || prof.dependabot;
   const dependabot_updates = ecos
-    .map((e) => `  - package-ecosystem: "${e}"\n    directory: "/"\n    schedule:\n      interval: "weekly"\n    open-pull-requests-limit: 5`)
+    .map((e) => `  - package-ecosystem: "${e}"\n    directory: "/"\n    schedule:\n      interval: "weekly"\n    open-pull-requests-limit: 5\n    groups:\n      minor-and-patch:\n        update-types: ["minor", "patch"]\n    ignore:\n      - dependency-name: "*"\n        update-types: ["version-update:semver-major"]`)
     .join("\n");
   return { project: cfg.project || {}, commands, conventions: { version }, profile: cfg.profile, commands_list, dependabot_updates };
 }

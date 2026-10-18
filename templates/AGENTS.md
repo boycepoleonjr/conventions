@@ -15,6 +15,27 @@ Instructions for any coding agent (Claude Code, Cursor, Codex) and for people wo
 - Standard: https://github.com/boycepoleonjr/conventions/blob/v{{conventions.version}}/STANDARD.md
 <!-- conventions:end agents-core -->
 
+<!-- conventions:begin agents-review -->
+## Review guidelines
+For AI reviewers (Codex, Claude, Cursor) and people. Report real defects with a concrete failing scenario. Skip style nits that lint already covers.
+
+Treat as P1 (blocking):
+- Secrets, API or write keys, tokens or credentials in source, config or client bundles, even if they look like placeholders.
+- User-controlled input (query params, form fields, headers) reaching HTML (`dangerouslySetInnerHTML`, `innerHTML`), SQL, shell commands, redirects or file paths without escaping or validation.
+- Personal data (names, emails, phone numbers, addresses, IDs) written to logs, `console.*`, analytics events or error reporters.
+- A request or promise with no error handling, where failure shows a success message, leaves the UI stuck or causes an unhandled rejection.
+- Validation that an alternate path skips (a second submit button, an API route, a shortcut).
+- Version changes hidden in `overrides` or `resolutions`, or any other break of the shared rules above.
+
+Also check:
+- Off-by-one errors in indexes, ranges, modulo wraparound and pagination.
+- Stale closures in React effects, intervals and handlers; missing cleanup.
+- Bug fixes without a regression test for each path of the fix.
+- Non-trivial features without a plan in `docs/specs/`.
+
+Do not flag behavior-preserving refactors (renames, function style, reordering).
+<!-- conventions:end agents-review -->
+
 ## Project
 {{project.summary}}
 

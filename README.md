@@ -17,7 +17,7 @@ Engineering conventions for my repositories, written for both people and coding 
 ## Use it in a repo
 
 ```bash
-git clone --depth 1 --branch v1.0.0 https://github.com/boycepoleonjr/conventions /tmp/conventions
+git clone --depth 1 --branch v1.1.0 https://github.com/boycepoleonjr/conventions /tmp/conventions
 node /tmp/conventions/scripts/sync.mjs --repo . --init   # first time: writes .conventions.json, then syncs
 node /tmp/conventions/scripts/sync.mjs --repo .          # later: update to the checked-out version
 node /tmp/conventions/scripts/sync.mjs --repo . --check  # report drift, exit 1 if anything would change
@@ -41,4 +41,4 @@ curl -fsSL https://raw.githubusercontent.com/boycepoleonjr/conventions/v1/script
 
 ## Versioning
 
-SemVer tags (`v1.0.0`), plus a moving major tag (`v1`) that always points at the latest 1.x release. Cloud environments and the drift check track `v1`; repos record the exact version they applied in `.conventions.lock.json`. Patch: wording fixes. Minor: new rules, files or profiles. Major: a change that needs manual work in repos (renamed markers, removed files). See `CHANGELOG.md`.
+SemVer tags (`v1.0.0`), plus a moving major **branch** (`v1`, not a tag) that always points at the latest 1.x release. It is a branch because cloud sessions cannot push tags (403); the exact `vX.Y.Z` tags are pushed separately. Cloud environments and the drift check track `v1`; repos record the exact version they applied in `.conventions.lock.json`. Patch: wording fixes. Minor: new rules, files or profiles. Major: a change that needs manual work in repos (renamed markers, removed files). See `CHANGELOG.md`.
