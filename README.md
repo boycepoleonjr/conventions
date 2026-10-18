@@ -1,2 +1,44 @@
 # conventions
-Engineering conventions for my repos, for people and coding agents (Claude Code, Cursor, Codex). Synced with scripts/sync.mjs.
+
+Engineering conventions for my repositories, written for both people and coding agents (Claude Code, Cursor, Codex). Public on purpose: it holds no secrets, and cloud agent sessions can fetch it without credentials.
+
+## What's here
+
+| Path | Purpose |
+|---|---|
+| `STANDARD.md` | The baseline every repo is measured against, with stable IDs |
+| `templates/` | Files synced into repos (agent docs, PR template, Dependabot, drift check) |
+| `profiles/` | Stack defaults: commands and Dependabot ecosystems |
+| `skills/` | Shared Claude Code skills, synced to each repo's `.claude/skills/` |
+| `global/CLAUDE.md` | User-level agent rules, installed into `~/.claude/` locally and in cloud sessions |
+| `scripts/sync.mjs` | Applies the conventions to a repo. Node 20+, no dependencies |
+| `scripts/cloud-setup.sh` | Setup script for Claude Code cloud environments |
+
+## Use it in a repo
+
+```bash
+git clone --depth 1 --branch v1.0.0 https://github.com/boycepoleonjr/conventions /tmp/conventions
+node /tmp/conventions/scripts/sync.mjs --repo . --init   # first time: writes .conventions.json, then syncs
+node /tmp/conventions/scripts/sync.mjs --repo .          # later: update to the checked-out version
+node /tmp/conventions/scripts/sync.mjs --repo . --check  # report drift, exit 1 if anything would change
+```
+
+`sync.mjs` never touches repo-owned content:
+
+- **block** files (for example `AGENTS.md`) only change between `<!-- conventions:begin <id> -->` and `<!-- conventions:end <id> -->` markers. Everything outside the markers belongs to the repo.
+- **replace** files are fully managed. If a managed file was edited by hand since the last sync, sync reports `CONFLICT` and leaves it alone unless you pass `--force`.
+- **seed** files are created once and never updated.
+
+Each repo records its settings in `.conventions.json` and the last applied version and hashes in `.conventions.lock.json`. Opt out of a file by adding its id to `"skip"`.
+
+## Cloud sessions
+
+Point a Claude Code cloud environment's setup script at:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/boycepoleonjr/conventions/v1/scripts/cloud-setup.sh | CONVENTIONS_REF=v1 bash || true
+```
+
+## Versioning
+
+SemVer tags (`v1.0.0`), plus a moving major tag (`v1`) that always points at the latest 1.x release. Cloud environments and the drift check track `v1`; repos record the exact version they applied in `.conventions.lock.json`. Patch: wording fixes. Minor: new rules, files or profiles. Major: a change that needs manual work in repos (renamed markers, removed files). See `CHANGELOG.md`.

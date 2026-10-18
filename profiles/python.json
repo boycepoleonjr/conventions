@@ -1,0 +1,12 @@
+{
+  "description": "Python project managed with uv",
+  "commands": {
+    "install": "uv sync",
+    "lint": "uv run ruff check .",
+    "typecheck": "uv run mypy .",
+    "test": "uv run pytest",
+    "build": "uv build",
+    "audit": "uvx pip-audit"
+  },
+  "dependabot": ["uv", "github-actions"]
+}
