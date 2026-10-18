@@ -82,18 +82,18 @@ test("upgrade: new conventions version updates managed parts only", () => {
   sync(repo, ["--init"]);
   write(repo, "AGENTS.md", readF(repo, "AGENTS.md").replace("- Stack: TODO", "- Stack: Next.js 15"));
   const conv = copyConventions();
-  write(conv, "VERSION", "1.1.0\n");
-  write(conv, "templates/AGENTS.md", readF(conv, "templates/AGENTS.md").replace("## Shared rules", "## Shared rules\n- New rule in 1.1.0."));
+  write(conv, "VERSION", "1.2.0\n");
+  write(conv, "templates/AGENTS.md", readF(conv, "templates/AGENTS.md").replace("## Shared rules", "## Shared rules\n- New rule in 1.2.0."));
   const check = sync(repo, ["--check"], conv);
   assert.equal(check.code, 1);
   assert.match(check.out, /UPDATE\s+AGENTS\.md/);
-  assert.match(check.out, /v1\.0\.0 -> v1\.1\.0/);
+  assert.match(check.out, /v1\.1\.0 -> v1\.2\.0/);
   assert.equal(sync(repo, [], conv).code, 0);
   const agents = readF(repo, "AGENTS.md");
-  assert.match(agents, /New rule in 1\.1\.0/);
+  assert.match(agents, /New rule in 1\.2\.0/);
   assert.match(agents, /Stack: Next\.js 15/);
-  assert.match(readF(repo, ".github/pull_request_template.md"), /v1\.1\.0/);
-  assert.equal(JSON.parse(readF(repo, ".conventions.lock.json")).version, "1.1.0");
+  assert.match(readF(repo, ".github/pull_request_template.md"), /v1\.2\.0/);
+  assert.equal(JSON.parse(readF(repo, ".conventions.lock.json")).version, "1.2.0");
 });
 
 test("hand edits to managed files are conflicts until --force", () => {
@@ -130,4 +130,65 @@ test("usage errors exit 3", () => {
   const repo = nodeRepo();
   assert.equal(sync(repo).code, 3);
   assert.equal(sync(repo, ["--bogus"]).code, 3);
+});
+
+const V100_AGENTS = `# AGENTS.md: demo-app
+
+Repo intro.
+
+<!-- conventions:begin agents-core -->
+## Shared rules (conventions v1.0.0)
+- Old rule.
+<!-- conventions:end agents-core -->
+
+## Project
+Repo-owned notes.
+
+- Stack: Next.js 15
+
+<!-- conventions:begin agents-commands -->
+## Commands
+- lint: \`npm run lint\`
+<!-- conventions:end agents-commands -->
+
+## Repo rules
+Keep this text.
+`;
+
+test("upgrade from 1.0.0: agents-review is inserted after agents-core, repo text untouched, --check drifts then clears", () => {
+  const repo = nodeRepo();
+  write(repo, "AGENTS.md", V100_AGENTS);
+  const before = readF(repo, "AGENTS.md");
+  const check = sync(repo, ["--init", "--check"]);
+  assert.equal(check.code, 1, check.out);
+  assert.match(check.out, /UPDATE\s+AGENTS\.md\s+\(inserted agents-review\)/);
+  assert.equal(readF(repo, "AGENTS.md"), before, "--check must not write");
+  const r = sync(repo, ["--init"]);
+  assert.notEqual(r.code, 3, r.out);
+  const agents = readF(repo, "AGENTS.md");
+  const i = (s) => agents.indexOf(s);
+  assert.ok(i("begin agents-core") < i("begin agents-review"));
+  assert.ok(i("end agents-core") < i("begin agents-review"));
+  assert.ok(i("end agents-review") < i("begin agents-commands"));
+  assert.match(agents, /## Review guidelines/);
+  // Everything outside the (re-rendered) blocks is byte-identical to before.
+  const strip = (t) => t.replace(/<!-- conventions:begin (\S+) -->[\s\S]*?<!-- conventions:end \1 -->/g, "<$1>");
+  assert.equal(strip(agents).replace("<agents-review>\n\n", ""), strip(before));
+  assert.match(agents, /Repo-owned notes\.\n\n- Stack: Next\.js 15/);
+  assert.match(agents, /## Repo rules\nKeep this text\.\n$/);
+  assert.equal(sync(repo, ["--check"]).code, 0);
+});
+
+test("dependabot: every ecosystem has version-update groups for minor/patch and major, no ignore", () => {
+  const repo = nodeRepo();
+  assert.equal(sync(repo, ["--init"]).code, 0);
+  const y = readF(repo, ".github/dependabot.yml");
+  for (const eco of ["npm", "github-actions"]) assert.match(y, new RegExp(`package-ecosystem: "${eco}"`));
+  const entries = y.split("\n  - package-ecosystem").slice(1);
+  assert.equal(entries.length, 2);
+  for (const e of entries) {
+    assert.match(e, /\n    groups:\n      minor-and-patch:\n        applies-to: version-updates\n        update-types: \["minor", "patch"\]\n      major:\n        applies-to: version-updates\n        update-types: \["major"\]/);
+    assert.ok(!e.includes("ignore"), "majors must not be ignored (would block security updates)");
+  }
+  assert.ok(!y.includes("\t"), "no tabs in YAML");
 });

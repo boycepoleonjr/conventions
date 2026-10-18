@@ -3,7 +3,7 @@
 Each item has a stable ID so audits and PRs can reference it. "Synced" means `sync.mjs` installs it; the rest are checked in an audit and fixed by hand or by a dedicated PR.
 
 ## DOC: agent and human docs
-- **DOC-1** `AGENTS.md` with the shared rules block, the commands block, and repo-owned Project and Repo rules sections. *(synced)*
+- **DOC-1** `AGENTS.md` with the shared rules block, the review guidelines block, the commands block, and repo-owned Project and Repo rules sections. *(synced)*
 - **DOC-2** `CLAUDE.md` that imports `AGENTS.md` (`@AGENTS.md`), so Claude Code, Cursor and Codex read the same instructions. *(synced)*
 - **DOC-3** `docs/specs/` for plans and `docs/handoffs/` for session handoffs. *(synced, seed)*
 - **DOC-4** README states what the project is, how to run it, and where it deploys.
@@ -24,7 +24,7 @@ Each item has a stable ID so audits and PRs can reference it. "Synced" means `sy
 - **CI-1** Install from the lockfile with one package manager per repo.
 - **CI-2** Required checks on the default branch: lint, typecheck, tests, build.
 - **CI-3** Secret scanning and a dependency audit (high severity fails).
-- **CI-4** Claude review on PR ready plus on-demand `@claude`; one trigger workflow. Codex or Cursor review as second reviewer on important repos. Bot PRs skip AI review instead of failing.
+- **CI-4** PR review: the Codex GitHub app reviews every PR automatically (primary). The Claude review workflow reviews every non-draft human PR on open, reopen and ready-for-review, with no triage step that can skip the review, plus on-demand `@claude` from one trigger workflow. Both read the AGENTS.md Review guidelines. No self-hosted Codex workflow. Cursor Bugbot is off by default (per-review cost); enable it per repo for high-risk work. Bot PRs skip AI review instead of failing.
 - **CI-5** Weekly conventions drift check. *(synced)*
 
 ## SUP: supply chain and permissions
@@ -32,6 +32,7 @@ Each item has a stable ID so audits and PRs can reference it. "Synced" means `sy
 - **SUP-2** Dependabot weekly for github-actions and the package ecosystem. *(synced)*
 - **SUP-3** Workflow `permissions:` least privilege, default `contents: read`.
 - **SUP-4** Dependency changes are declared openly in the manifest. Never hide a version change inside `overrides`/`resolutions` while the manifest claims a different range; if an override is unavoidable, explain it in the PR. *(skill: dependency-update)*
+- **SUP-5** Dependabot opens one grouped minor/patch PR and one grouped major PR per ecosystem weekly. Security updates arrive separately. Never merge the grouped major PR blindly: split it and do each major deliberately with the dependency-update skill. *(synced)*
 
 ## DEP: deploy
 - **DEP-1** Auto-deploy on merge to the production branch; secrets live only in the host or repo secrets.
