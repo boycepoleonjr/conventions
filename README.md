@@ -31,6 +31,24 @@ node /tmp/conventions/scripts/sync.mjs --repo . --check  # report drift, exit 1 
 
 Each repo records its settings in `.conventions.json` and the last applied version and hashes in `.conventions.lock.json`. Opt out of a file by adding its id to `"skip"`.
 
+## Partial adoption
+
+To adopt only some managed files without full onboarding, pass `--only` with manifest ids (the `id` fields in `manifest.json`, comma-separated):
+
+```bash
+node /tmp/conventions/scripts/sync.mjs --repo . --init --only claude-review   # first time: writes .conventions.json, installs and locks only that file
+node /tmp/conventions/scripts/sync.mjs --repo . --check --only claude-review  # drift for that file only
+node /tmp/conventions/scripts/sync.mjs --repo . --only claude-review --force  # overwrite it if edited by hand
+```
+
+`--only` works with `--init`, `--check`, `--force` and plain apply. Files outside the list are neither written nor reported, and the lock keeps their existing entries. A later full `sync.mjs --repo .` works normally and treats files that already match as clean. Unknown ids exit 3.
+
+The Claude review workflow (`claude-review`, CI-4) reads optional repo-specific focus from `.conventions.json`:
+
+```json
+{ "claude_review": { "focus": "Check RLS policies on every new table.\nFlag any new public route without auth." } }
+```
+
 ## Cloud sessions
 
 Point a Claude Code cloud environment's setup script at:

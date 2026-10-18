@@ -4,6 +4,7 @@
     { "id": "claude-md", "src": "templates/CLAUDE.md", "dest": "CLAUDE.md", "mode": "block", "blocks": ["claude-import"] },
     { "id": "pr-template", "src": "templates/pull_request_template.md", "dest": ".github/pull_request_template.md", "mode": "replace" },
     { "id": "dependabot", "src": "templates/dependabot.yml", "dest": ".github/dependabot.yml", "mode": "replace" },
+    { "id": "claude-review", "src": "templates/claude-code-review.yml", "dest": ".github/workflows/claude-code-review.yml", "mode": "replace" },
     { "id": "conventions-check", "src": "templates/conventions-check.yml", "dest": ".github/workflows/conventions-check.yml", "mode": "replace" },
     { "id": "specs-readme", "src": "templates/specs-README.md", "dest": "docs/specs/README.md", "mode": "seed" },
     { "id": "handoffs-readme", "src": "templates/handoffs-README.md", "dest": "docs/handoffs/README.md", "mode": "seed" },

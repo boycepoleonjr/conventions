@@ -1,0 +1,55 @@
+# Synced from boycepoleonjr/conventions v{{conventions.version}} (CI-4). Edit there. Repo-specific review focus goes in "claude_review.focus" in .conventions.json; opt out by adding "claude-review" to "skip".
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+# No default token scopes; the job declares what it needs.
+permissions: {}
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  claude-review:
+    # Skip drafts, fork PRs (no secrets or OIDC) and bot authors as a skipped job, not a failure.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !contains(fromJSON('["dependabot[bot]", "github-actions[bot]", "renovate[bot]"]'), github.event.pull_request.user.login)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+    steps:
+      # Held at checkout v4.4.0 on purpose: v6+ persists the token through includeIf.gitdir, which
+      # claude-code-action does not clear, so the token would stay usable during the Claude run.
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        uses: anthropics/claude-code-action@5eb090f3c3afd701a0672cd32981197ca27688f6 # v1.0.253
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # cursor[bot] is the org's own agent and may trigger reviews like a maintainer.
+          allowed_bots: 'cursor'
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this pull request. Always complete the review; do not skip it.
+
+            1. Read AGENTS.md (and CLAUDE.md if present) at the repo root, especially the "Review guidelines" section, and follow them.
+            2. Run `gh pr view ${{ github.event.pull_request.number }}` and `gh pr diff ${{ github.event.pull_request.number }}` and review the full diff of this PR.
+            3. For each real defect (correctness, security, regressions, missing tests for changed behavior), post an inline comment on the relevant line with the `mcp__github_inline_comment__create_inline_comment` tool. Skip style nitpicks and anything linters already catch.
+            4. Always finish by posting exactly one summary comment with `gh pr comment ${{ github.event.pull_request.number }} --body "..."`. Summarize what you reviewed and the findings. If you found no defects, the summary must say "No issues found".
+{{claude_review_focus}}
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Read,Glob,Grep"

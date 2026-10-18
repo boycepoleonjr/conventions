@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0 (2026-10-18)
+- New synced workflow `.github/workflows/claude-code-review.yml` (manifest id `claude-review`, mode `replace`, all profiles, skippable): reviews every non-draft same-repo human PR on open, reopen and ready-for-review, reads the AGENTS.md Review guidelines, always posts one summary comment. `anthropics/claude-code-action` is pinned to a full commit SHA (v1.0.253, 5eb090f3c3afd701a0672cd32981197ca27688f6); checkout stays at v4.4.0. Repo-specific focus comes from `claude_review.focus` in `.conventions.json`.
+- `sync.mjs --only <id>[,<id>...]` for partial adoption with `--init`, `--check`, `--force` and apply; only listed files are written and locked, a later full sync treats matching files as clean. Documented in the README.
+- `sync.mjs` template rendering only substitutes `{{ word.word }}`; GitHub `${{ ... }}` expressions pass through untouched. A placeholder alone on its line that renders empty drops the line.
+- STANDARD CI-4 notes the synced workflow and `claude_review.focus`.
+
 ## 1.1.0 (2026-10-18)
 - New synced `agents-review` block in `AGENTS.md` (after `agents-core`): "Review guidelines" with P1 blocking criteria and extra checks, read by AI reviewers and people. `sync.mjs` inserts the block into existing `AGENTS.md` files right after the previous block, leaving all other text unchanged.
 - CI-4 rewritten from a PR-review benchmark: Codex GitHub app is the primary reviewer; the Claude review workflow covers every non-draft human PR with no skippable triage step, plus on-demand `@claude`; both read the Review guidelines; no self-hosted Codex workflow; Cursor Bugbot off by default.
