@@ -179,7 +179,7 @@ test("upgrade from 1.0.0: agents-review is inserted after agents-core, repo text
   assert.equal(sync(repo, ["--check"]).code, 0);
 });
 
-test("dependabot: every ecosystem groups minor/patch and ignores majors; YAML shape is valid", () => {
+test("dependabot: every ecosystem has version-update groups for minor/patch and major, no ignore", () => {
   const repo = nodeRepo();
   assert.equal(sync(repo, ["--init"]).code, 0);
   const y = readF(repo, ".github/dependabot.yml");
@@ -187,8 +187,8 @@ test("dependabot: every ecosystem groups minor/patch and ignores majors; YAML sh
   const entries = y.split("\n  - package-ecosystem").slice(1);
   assert.equal(entries.length, 2);
   for (const e of entries) {
-    assert.match(e, /\n    groups:\n      minor-and-patch:\n        update-types: \["minor", "patch"\]\n/);
-    assert.match(e, /\n    ignore:\n      - dependency-name: "\*"\n        update-types: \["version-update:semver-major"\]/);
+    assert.match(e, /\n    groups:\n      minor-and-patch:\n        applies-to: version-updates\n        update-types: \["minor", "patch"\]\n      major:\n        applies-to: version-updates\n        update-types: \["major"\]/);
+    assert.ok(!e.includes("ignore"), "majors must not be ignored (would block security updates)");
   }
   assert.ok(!y.includes("\t"), "no tabs in YAML");
 });
