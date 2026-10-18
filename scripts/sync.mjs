@@ -5,6 +5,7 @@
 //   node sync.mjs --repo <path>            apply the checked-out conventions version
 //   node sync.mjs --repo <path> --check    report only; exit 1 if anything would change
 //   node sync.mjs --repo <path> --force    overwrite managed files edited by hand
+//   node sync.mjs --repo <path> --only <id>[,<id>...]   limit any of the above to the listed manifest ids
 //
 // Exit codes: 0 ok, 1 drift found (--check), 2 conflicts left unresolved, 3 usage error.
 import fs from "node:fs";
@@ -25,6 +26,12 @@ function parseArgs(argv) {
     else if (k === "--init") a.init = true;
     else if (k === "--check") a.check = true;
     else if (k === "--force") a.force = true;
+    else if (k === "--only") {
+      const v = argv[++i];
+      if (!v) throw new Error("--only needs a comma-separated list of manifest ids");
+      a.only = v.split(",").map((x) => x.trim()).filter(Boolean);
+      if (!a.only.length) throw new Error("--only needs a comma-separated list of manifest ids");
+    }
     else if (k === "--profile") a.profile = argv[++i];
     else if (k === "--name") a.name = argv[++i];
     else if (k === "-h" || k === "--help") a.help = true;
@@ -85,15 +92,29 @@ function vars(cfg, version) {
   const dependabot_updates = ecos
     .map((e) => `  - package-ecosystem: "${e}"\n    directory: "/"\n    schedule:\n      interval: "weekly"\n    open-pull-requests-limit: 5\n    groups:\n      minor-and-patch:\n        applies-to: version-updates\n        update-types: ["minor", "patch"]\n      major:\n        applies-to: version-updates\n        update-types: ["major"]`)
     .join("\n");
-  return { project: cfg.project || {}, commands, conventions: { version }, profile: cfg.profile, commands_list, dependabot_updates };
+  return { project: cfg.project || {}, commands, conventions: { version }, profile: cfg.profile, commands_list, dependabot_updates, claude_review_focus: reviewFocus(cfg) };
 }
 
+// Extra lines for the Claude review prompt, indented to sit inside the workflow's `prompt: |` block scalar.
+function reviewFocus(cfg) {
+  const focus = String((cfg.claude_review && cfg.claude_review.focus) || "").replace(/\r\n?/g, "\n").trim();
+  if (!focus) return "";
+  if (focus.includes("${{")) throw new Error('claude_review.focus must not contain "${{" (GitHub expressions)');
+  const pad = " ".repeat(12);
+  return `\n${pad}Repo-specific focus:\n` + focus.split("\n").map((l) => (l.trim() ? pad + l : "")).join("\n");
+}
+
+// Only `{{ word.word }}` is ours; `${{ ... }}` is a GitHub Actions expression and passes through untouched.
+// A placeholder alone on its line that renders empty drops the whole line.
 function render(tpl, v) {
-  return tpl.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (m, key) => {
+  const lookup = (key) => {
     const val = key.split(".").reduce((o, k) => (o == null ? undefined : o[k]), v);
     if (val === undefined) throw new Error(`template variable {{${key}}} is undefined`);
     return String(val);
-  });
+  };
+  return tpl
+    .replace(/^(?<!\$)\{\{\s*([\w.]+)\s*\}\}\n/gm, (m, key) => (lookup(key) === "" ? "" : m))
+    .replace(/(?<!\$)\{\{\s*([\w.]+)\s*\}\}/g, (m, key) => lookup(key));
 }
 
 function blocksOf(text) {
@@ -147,9 +168,16 @@ export function plan(repo, opts = {}) {
   const lock = readJson(path.join(repo, LOCK)) || { version: null, files: {} };
   const v = vars(cfg, version);
   const skip = new Set(cfg.skip || []);
-  const newLock = { version, profile: cfg.profile, files: {} };
+  const only = opts.only ? new Set(opts.only) : null;
+  if (only) {
+    const unknown = [...only].filter((id) => !manifest.files.some((f) => f.id === id));
+    if (unknown.length) throw new Error(`--only: unknown manifest id ${unknown.join(", ")} (known: ${manifest.files.map((f) => f.id).join(", ")})`);
+  }
+  // With --only, hashes of files outside the selection are carried over so a later full sync still knows them.
+  const newLock = { version, profile: cfg.profile, files: only ? { ...lock.files } : {} };
 
   for (const f of manifest.files) {
+    if (only && !only.has(f.id)) continue;
     if (skip.has(f.id)) { actions.push({ status: "SKIP", dest: f.dest, note: `"${f.id}" in skip` }); continue; }
     if (f.profiles && !f.profiles.includes(cfg.profile)) continue;
     const dest = path.join(repo, f.dest);

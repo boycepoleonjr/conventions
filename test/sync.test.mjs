@@ -32,7 +32,7 @@ test("new repo: init creates everything, second run is clean", () => {
   const repo = nodeRepo();
   const first = sync(repo, ["--init"]);
   assert.equal(first.code, 0, first.out);
-  for (const f of ["AGENTS.md", "CLAUDE.md", ".github/pull_request_template.md", ".github/dependabot.yml", ".github/workflows/conventions-check.yml", "docs/specs/README.md", "docs/handoffs/README.md", ".claude/skills/open-pr/SKILL.md", ".conventions.json", ".conventions.lock.json"]) {
+  for (const f of ["AGENTS.md", "CLAUDE.md", ".github/pull_request_template.md", ".github/dependabot.yml", ".github/workflows/conventions-check.yml", ".github/workflows/claude-code-review.yml", "docs/specs/README.md", "docs/handoffs/README.md", ".claude/skills/open-pr/SKILL.md", ".conventions.json", ".conventions.lock.json"]) {
     assert.ok(fs.existsSync(path.join(repo, f)), `missing ${f}`);
   }
   const cfg = JSON.parse(readF(repo, ".conventions.json"));
@@ -82,18 +82,18 @@ test("upgrade: new conventions version updates managed parts only", () => {
   sync(repo, ["--init"]);
   write(repo, "AGENTS.md", readF(repo, "AGENTS.md").replace("- Stack: TODO", "- Stack: Next.js 15"));
   const conv = copyConventions();
-  write(conv, "VERSION", "1.2.0\n");
-  write(conv, "templates/AGENTS.md", readF(conv, "templates/AGENTS.md").replace("## Shared rules", "## Shared rules\n- New rule in 1.2.0."));
+  write(conv, "VERSION", "1.3.0\n");
+  write(conv, "templates/AGENTS.md", readF(conv, "templates/AGENTS.md").replace("## Shared rules", "## Shared rules\n- New rule in 1.3.0."));
   const check = sync(repo, ["--check"], conv);
   assert.equal(check.code, 1);
   assert.match(check.out, /UPDATE\s+AGENTS\.md/);
-  assert.match(check.out, /v1\.1\.0 -> v1\.2\.0/);
+  assert.match(check.out, /v1\.2\.0 -> v1\.3\.0/);
   assert.equal(sync(repo, [], conv).code, 0);
   const agents = readF(repo, "AGENTS.md");
-  assert.match(agents, /New rule in 1\.2\.0/);
+  assert.match(agents, /New rule in 1\.3\.0/);
   assert.match(agents, /Stack: Next\.js 15/);
-  assert.match(readF(repo, ".github/pull_request_template.md"), /v1\.2\.0/);
-  assert.equal(JSON.parse(readF(repo, ".conventions.lock.json")).version, "1.2.0");
+  assert.match(readF(repo, ".github/pull_request_template.md"), /v1\.3\.0/);
+  assert.equal(JSON.parse(readF(repo, ".conventions.lock.json")).version, "1.3.0");
 });
 
 test("hand edits to managed files are conflicts until --force", () => {
@@ -191,4 +191,134 @@ test("dependabot: every ecosystem has version-update groups for minor/patch and 
     assert.ok(!e.includes("ignore"), "majors must not be ignored (would block security updates)");
   }
   assert.ok(!y.includes("\t"), "no tabs in YAML");
+});
+
+const WF = ".github/workflows/claude-code-review.yml";
+const yamlParses = (text) => {
+  const probe = spawnSync("python3", ["-c", "import yaml"]);
+  if (probe.status !== 0) return null; // PyYAML not installed; structural checks below still run
+  const r = spawnSync("python3", ["-c", "import sys,yaml,json;print(json.dumps(yaml.safe_load(sys.stdin.read())))"], { input: text, encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  return JSON.parse(r.stdout);
+};
+const promptOf = (wf) => wf.jobs["claude-review"].steps[1].with.prompt;
+const GH_EXPRS = ["${{ github.event.pull_request.number }}", "${{ github.repository }}", "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"];
+
+test("claude-review workflow: renders without focus, GitHub expressions intact, no blank line left behind", () => {
+  const repo = nodeRepo();
+  assert.equal(sync(repo, ["--init"]).code, 0);
+  const y = readF(repo, WF);
+  assert.match(y, /^# Synced from boycepoleonjr\/conventions v1\.2\.0 /);
+  for (const e of GH_EXPRS) assert.ok(y.includes(e), `lost ${e}`);
+  assert.ok(!y.includes("{{conventions") && !y.includes("claude_review_focus"));
+  assert.ok(!y.includes("Repo-specific focus"));
+  assert.match(y, /Always finish by posting exactly one summary comment[^\n]*\n {10}claude_args: \|/);
+  assert.match(y, /claude-code-action@[0-9a-f]{40} # v1\.\d+\.\d+/);
+  const wf = yamlParses(y);
+  if (wf) {
+    assert.equal(wf.name, "Claude Code Review");
+    assert.ok(!promptOf(wf).includes("Repo-specific focus"));
+    assert.match(promptOf(wf), /PR NUMBER: \$\{\{ github\.event\.pull_request\.number \}\}/);
+  }
+  assert.equal(sync(repo, ["--check"]).code, 0);
+});
+
+test("claude-review workflow: claude_review.focus is indented into the prompt block, expressions untouched", () => {
+  const repo = nodeRepo();
+  assert.equal(sync(repo, ["--init"]).code, 0);
+  const cfg = JSON.parse(readF(repo, ".conventions.json"));
+  cfg.claude_review = { focus: "Check RLS on new tables.\n\nNo raw SQL in routes: use the query builder.\n" };
+  write(repo, ".conventions.json", JSON.stringify(cfg, null, 2) + "\n");
+  assert.equal(sync(repo).code, 0);
+  const y = readF(repo, WF);
+  const pad = " ".repeat(12);
+  assert.ok(y.includes(`4. Always finish`), "prompt step 4 present");
+  assert.match(y, new RegExp(`\\n\\n${pad}Repo-specific focus:\\n${pad}Check RLS on new tables\\.\\n\\n${pad}No raw SQL in routes: use the query builder\\.\\n {10}claude_args: \\|`));
+  for (const e of GH_EXPRS) assert.ok(y.includes(e), `lost ${e}`);
+  // every prompt line is blank or indented at least 12 spaces
+  const lines = y.split("\n");
+  const start = lines.findIndex((l) => l.trim() === "prompt: |") + 1;
+  const end = lines.findIndex((l) => l.trim() === "claude_args: |");
+  for (const l of lines.slice(start, end)) assert.ok(l === "" || l.startsWith(pad), `bad indent: ${JSON.stringify(l)}`);
+  const wf = yamlParses(y);
+  if (wf) {
+    assert.match(promptOf(wf), /Repo-specific focus:\n {0}Check RLS on new tables\.\n\nNo raw SQL in routes: use the query builder\./);
+    assert.match(promptOf(wf), /gh pr view \$\{\{ github\.event\.pull_request\.number \}\}/);
+  }
+  assert.equal(sync(repo, ["--check"]).code, 0);
+  // removing the focus renders the no-focus file again
+  delete cfg.claude_review;
+  write(repo, ".conventions.json", JSON.stringify(cfg, null, 2) + "\n");
+  assert.equal(sync(repo).code, 0);
+  assert.ok(!readF(repo, WF).includes("Repo-specific focus"));
+});
+
+test("claude-review workflow: focus with a GitHub expression is rejected", () => {
+  const repo = nodeRepo();
+  assert.equal(sync(repo, ["--init"]).code, 0);
+  const cfg = JSON.parse(readF(repo, ".conventions.json"));
+  cfg.claude_review = { focus: "echo ${{ secrets.X }}" };
+  write(repo, ".conventions.json", JSON.stringify(cfg, null, 2) + "\n");
+  const r = sync(repo);
+  assert.equal(r.code, 3, r.out);
+  assert.match(r.out, /must not contain/);
+});
+
+test("claude-review: skip opts out", () => {
+  const repo = nodeRepo();
+  assert.equal(sync(repo, ["--init"]).code, 0);
+  const cfg = JSON.parse(readF(repo, ".conventions.json"));
+  cfg.skip = ["claude-review"];
+  write(repo, ".conventions.json", JSON.stringify(cfg, null, 2) + "\n");
+  assert.match(sync(repo, ["--check"]).out, /SKIP\s+\.github\/workflows\/claude-code-review\.yml/);
+});
+
+test("--only: init installs and locks just the listed files; check, force and later full sync behave", () => {
+  const repo = nodeRepo();
+  const first = sync(repo, ["--init", "--only", "claude-review"]);
+  assert.equal(first.code, 0, first.out);
+  assert.ok(fs.existsSync(path.join(repo, WF)));
+  assert.ok(fs.existsSync(path.join(repo, ".conventions.json")));
+  for (const f of ["AGENTS.md", "CLAUDE.md", ".github/dependabot.yml", ".github/pull_request_template.md", ".claude/skills/open-pr/SKILL.md"]) {
+    assert.ok(!fs.existsSync(path.join(repo, f)), `--only must not write ${f}`);
+  }
+  const lock = JSON.parse(readF(repo, ".conventions.lock.json"));
+  assert.deepEqual(Object.keys(lock.files), [WF]);
+  assert.equal(sync(repo, ["--check", "--only", "claude-review"]).code, 0);
+  // full check sees the other files as not yet adopted
+  assert.equal(sync(repo, ["--check"]).code, 1);
+  // hand edit: conflict on --only, overwritten with --force --only
+  write(repo, WF, "name: custom\n");
+  const c = sync(repo, ["--only", "claude-review"]);
+  assert.equal(c.code, 2, c.out);
+  assert.equal(readF(repo, WF), "name: custom\n");
+  assert.equal(sync(repo, ["--only", "claude-review", "--force"]).code, 0);
+  assert.match(readF(repo, WF), /name: Claude Code Review/);
+  assert.equal(sync(repo, ["--check", "--only", "claude-review"]).code, 0);
+  // later full sync: already-matching file is clean, the rest is created, then everything is clean
+  const full = sync(repo);
+  assert.equal(full.code, 0, full.out);
+  assert.match(full.out, /OK\s+\.github\/workflows\/claude-code-review\.yml/);
+  assert.ok(fs.existsSync(path.join(repo, "AGENTS.md")));
+  assert.equal(sync(repo, ["--check"]).code, 0);
+  const lock2 = JSON.parse(readF(repo, ".conventions.lock.json"));
+  assert.ok(lock2.files[WF] && lock2.files["AGENTS.md"]);
+});
+
+test("--only: accepts several ids, keeps other lock entries, rejects unknown ids", () => {
+  const repo = nodeRepo();
+  assert.equal(sync(repo, ["--init"]).code, 0);
+  const lockBefore = readF(repo, ".conventions.lock.json");
+  write(repo, "AGENTS.md", readF(repo, "AGENTS.md").replace("Never merge.", "Merge freely."));
+  fs.rmSync(path.join(repo, WF));
+  const r = sync(repo, ["--only", "claude-review,pr-template"]);
+  assert.equal(r.code, 0, r.out);
+  assert.ok(fs.existsSync(path.join(repo, WF)));
+  assert.match(readF(repo, "AGENTS.md"), /Merge freely\./, "unlisted file untouched");
+  assert.ok(!r.out.includes("AGENTS.md"), "unlisted file not reported");
+  assert.equal(readF(repo, ".conventions.lock.json"), lockBefore, "other lock entries preserved");
+  const bad = sync(repo, ["--only", "nope"]);
+  assert.equal(bad.code, 3, bad.out);
+  assert.match(bad.out, /unknown manifest id nope/);
+  assert.equal(sync(repo, ["--only"]).code, 3);
 });
