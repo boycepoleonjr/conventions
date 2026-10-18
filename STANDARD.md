@@ -24,7 +24,7 @@ Each item has a stable ID so audits and PRs can reference it. "Synced" means `sy
 - **CI-1** Install from the lockfile with one package manager per repo.
 - **CI-2** Required checks on the default branch: lint, typecheck, tests, build.
 - **CI-3** Secret scanning and a dependency audit (high severity fails).
-- **CI-4** PR review: the Codex GitHub app reviews every PR automatically (primary). The Claude review workflow reviews every non-draft human PR on open, reopen and ready-for-review, with no triage step that can skip the review, plus on-demand `@claude` from one trigger workflow. Both read the AGENTS.md Review guidelines. No self-hosted Codex workflow. Cursor Bugbot is off by default (per-review cost); enable it per repo for high-risk work. Bot PRs skip AI review instead of failing. Synced as .github/workflows/claude-code-review.yml; repo-specific focus via claude_review.focus.
+- **CI-4** PR review: the Codex GitHub app reviews every PR automatically (primary). The Claude review workflow reviews every non-draft human PR on open, every push, reopen and ready-for-review (no triage step that can skip the review), re-reviews the full diff on each run and posts only new findings, and fails loudly if its secret is missing; plus on-demand `@claude` from one trigger workflow. Both read the AGENTS.md Review guidelines. No self-hosted Codex workflow. Cursor Bugbot is off by default (per-review cost); enable it per repo for high-risk work. Bot PRs skip AI review instead of failing. Synced as .github/workflows/claude-code-review.yml; repo-specific focus via claude_review.focus.
 - **CI-5** Weekly conventions drift check. *(synced)*
 
 ## SUP: supply chain and permissions

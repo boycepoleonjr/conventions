@@ -82,18 +82,18 @@ test("upgrade: new conventions version updates managed parts only", () => {
   sync(repo, ["--init"]);
   write(repo, "AGENTS.md", readF(repo, "AGENTS.md").replace("- Stack: TODO", "- Stack: Next.js 15"));
   const conv = copyConventions();
-  write(conv, "VERSION", "1.3.0\n");
-  write(conv, "templates/AGENTS.md", readF(conv, "templates/AGENTS.md").replace("## Shared rules", "## Shared rules\n- New rule in 1.3.0."));
+  write(conv, "VERSION", "1.4.0\n");
+  write(conv, "templates/AGENTS.md", readF(conv, "templates/AGENTS.md").replace("## Shared rules", "## Shared rules\n- New rule in 1.4.0."));
   const check = sync(repo, ["--check"], conv);
   assert.equal(check.code, 1);
   assert.match(check.out, /UPDATE\s+AGENTS\.md/);
-  assert.match(check.out, /v1\.2\.0 -> v1\.3\.0/);
+  assert.match(check.out, /v1\.3\.0 -> v1\.4\.0/);
   assert.equal(sync(repo, [], conv).code, 0);
   const agents = readF(repo, "AGENTS.md");
-  assert.match(agents, /New rule in 1\.3\.0/);
+  assert.match(agents, /New rule in 1\.4\.0/);
   assert.match(agents, /Stack: Next\.js 15/);
-  assert.match(readF(repo, ".github/pull_request_template.md"), /v1\.3\.0/);
-  assert.equal(JSON.parse(readF(repo, ".conventions.lock.json")).version, "1.3.0");
+  assert.match(readF(repo, ".github/pull_request_template.md"), /v1\.4\.0/);
+  assert.equal(JSON.parse(readF(repo, ".conventions.lock.json")).version, "1.4.0");
 });
 
 test("hand edits to managed files are conflicts until --force", () => {
@@ -201,14 +201,15 @@ const yamlParses = (text) => {
   assert.equal(r.status, 0, r.stderr);
   return JSON.parse(r.stdout);
 };
-const promptOf = (wf) => wf.jobs["claude-review"].steps[1].with.prompt;
+const stepsOf = (wf) => wf.jobs["claude-review"].steps;
+const promptOf = (wf) => stepsOf(wf).find((st) => st.with && st.with.prompt).with.prompt;
 const GH_EXPRS = ["${{ github.event.pull_request.number }}", "${{ github.repository }}", "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"];
 
 test("claude-review workflow: renders without focus, GitHub expressions intact, no blank line left behind", () => {
   const repo = nodeRepo();
   assert.equal(sync(repo, ["--init"]).code, 0);
   const y = readF(repo, WF);
-  assert.match(y, /^# Synced from boycepoleonjr\/conventions v1\.2\.0 /);
+  assert.match(y, /^# Synced from boycepoleonjr\/conventions v1\.3\.0 /);
   for (const e of GH_EXPRS) assert.ok(y.includes(e), `lost ${e}`);
   assert.ok(!y.includes("{{conventions") && !y.includes("claude_review_focus"));
   assert.ok(!y.includes("Repo-specific focus"));
@@ -223,6 +224,46 @@ test("claude-review workflow: renders without focus, GitHub expressions intact, 
   assert.equal(sync(repo, ["--check"]).code, 0);
 });
 
+test("claude-review workflow: reviews every push, fails loudly without the secret, dedupes against earlier comments", () => {
+  const repo = nodeRepo();
+  assert.equal(sync(repo, ["--init"]).code, 0);
+  const y = readF(repo, WF);
+  assert.match(y, /types: \[opened, synchronize, reopened, ready_for_review\]/);
+  assert.match(y, /cancel-in-progress: true/);
+  assert.match(y, /timeout-minutes: 30\n/);
+  assert.match(y, /allowed_bots: "cursor"/, "double quotes keep the file Prettier-clean");
+  const wf = yamlParses(y);
+  if (wf) {
+    assert.deepEqual(wf[true].pull_request.types, ["opened", "synchronize", "reopened", "ready_for_review"]);
+    const job = wf.jobs["claude-review"];
+    assert.equal(job["timeout-minutes"], 30);
+    const first = stepsOf(wf)[0];
+    assert.match(first.name, /CLAUDE_CODE_OAUTH_TOKEN/);
+    assert.equal(first.env.HAS_TOKEN, "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}");
+    assert.match(first.run, /\[ "\$HAS_TOKEN" != "true" \]/);
+    assert.match(first.run, /::error::CLAUDE_CODE_OAUTH_TOKEN is not set/);
+    assert.match(first.run, /exit 1/);
+    assert.ok(!first.uses && !("continue-on-error" in first) && !first.if, "secret check is unconditional and cannot be ignored");
+    assert.ok(stepsOf(wf).findIndex((st) => st.with && st.with.prompt) > 0, "secret check runs before the review step");
+    const prompt = promptOf(wf);
+    assert.match(prompt, /FULL diff of the PR on every run/);
+    assert.match(prompt, /gh pr view \$\{\{ github\.event\.pull_request\.number \}\} --comments/);
+    assert.match(prompt, /gh api repos\/\$\{\{ github\.repository \}\}\/pulls\/\$\{\{ github\.event\.pull_request\.number \}\}\/comments --paginate/);
+    assert.match(prompt, /GET requests only/);
+    assert.match(prompt, /Do not repeat a finding that is already posted and still applies/);
+    assert.match(prompt, /first review or a re-review/);
+    assert.match(prompt, /head SHA/);
+    assert.match(prompt, /No new issues found/);
+    const claudeStep = stepsOf(wf).find((st) => st.with && st.with.claude_args);
+    assert.match(claudeStep.with.claude_args, /Bash\(gh api repos\/\$\{\{ github\.repository \}\}\/pulls\/\$\{\{ github\.event\.pull_request\.number \}\}\/comments:\*\)/);
+    assert.ok(!/Bash\(gh api:\*\)/.test(claudeStep.with.claude_args), "gh api is scoped to this PR's review comments");
+  }
+  // without PyYAML the text checks still pin the order: secret check before checkout and review
+  assert.ok(y.indexOf("Require CLAUDE_CODE_OAUTH_TOKEN") < y.indexOf("actions/checkout@"));
+  assert.ok(y.indexOf("actions/checkout@") < y.indexOf("claude-code-action@"));
+  for (const e of GH_EXPRS) assert.ok(y.includes(e), `lost ${e}`);
+});
+
 test("claude-review workflow: claude_review.focus is indented into the prompt block, expressions untouched", () => {
   const repo = nodeRepo();
   assert.equal(sync(repo, ["--init"]).code, 0);
@@ -232,7 +273,7 @@ test("claude-review workflow: claude_review.focus is indented into the prompt bl
   assert.equal(sync(repo).code, 0);
   const y = readF(repo, WF);
   const pad = " ".repeat(12);
-  assert.ok(y.includes(`4. Always finish`), "prompt step 4 present");
+  assert.ok(y.includes(`5. Always finish`), "prompt step 4 present");
   assert.match(y, new RegExp(`\\n\\n${pad}Repo-specific focus:\\n${pad}Check RLS on new tables\\.\\n\\n${pad}No raw SQL in routes: use the query builder\\.\\n {10}claude_args: \\|`));
   for (const e of GH_EXPRS) assert.ok(y.includes(e), `lost ${e}`);
   // every prompt line is blank or indented at least 12 spaces

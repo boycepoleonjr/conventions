@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0 (2026-10-18)
+- Behavior change in the synced `claude-review` workflow (CI-4): it now also runs on every push (`synchronize`). A newer push cancels the older run and the newer run reviews the full diff, so nothing is skipped.
+- A missing `CLAUDE_CODE_OAUTH_TOKEN` now fails the job loudly (first step, `::error::` with the fix) instead of skipping the review. Repos without the secret should add it or add `claude-review` to `skip`.
+- The review prompt always reviews the full PR diff, reads existing PR comments and inline review comments first (`gh pr view --comments`, `gh api .../pulls/N/comments --paginate`, GET only), does not repeat findings that are posted and still apply, and ends with one summary comment that says first review or re-review (with the head SHA) and "No new issues found" when there is nothing new. `gh api` is allowed only for this PR's review-comments path; "GET only" is a prompt rule because the allowedTools syntax matches by prefix.
+- `timeout-minutes` 20 -> 30. `allowed_bots` uses double quotes so the rendered file is Prettier 3 clean; the repo's test workflow now renders the template (with and without focus) and runs `prettier@3 --check` on it.
+- STANDARD CI-4 updated.
+
 ## 1.2.0 (2026-10-18)
 - New synced workflow `.github/workflows/claude-code-review.yml` (manifest id `claude-review`, mode `replace`, all profiles, skippable): reviews every non-draft same-repo human PR on open, reopen and ready-for-review, reads the AGENTS.md Review guidelines, always posts one summary comment. `anthropics/claude-code-action` is pinned to a full commit SHA (v1.0.253, 5eb090f3c3afd701a0672cd32981197ca27688f6); checkout stays at v4.4.0. Repo-specific focus comes from `claude_review.focus` in `.conventions.json`.
 - `sync.mjs --only <id>[,<id>...]` for partial adoption with `--init`, `--check`, `--force` and apply; only listed files are written and locked, a later full sync treats matching files as clean. Documented in the README.
