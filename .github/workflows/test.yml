@@ -18,3 +18,19 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: node --test test/*.test.mjs
       - run: bash -n scripts/cloud-setup.sh
+      - name: Prettier-check rendered claude-review workflow
+        if: matrix.node == 22
+        run: |
+          set -euo pipefail
+          out=$(mktemp -d)
+          for variant in plain focus; do
+            repo="$out/$variant"
+            mkdir -p "$repo"
+            echo '{"name":"demo","scripts":{"test":"t"}}' > "$repo/package.json"
+            node scripts/sync.mjs --repo "$repo" --init --only claude-review
+            if [ "$variant" = focus ]; then
+              node -e 'const fs=require("fs"),f=process.argv[1]+"/.conventions.json",c=JSON.parse(fs.readFileSync(f));c.claude_review={focus:"Check RLS on new tables.\nFlag raw SQL in routes."};fs.writeFileSync(f,JSON.stringify(c))' "$repo"
+              node scripts/sync.mjs --repo "$repo" --only claude-review
+            fi
+            npx --yes prettier@3 --no-config --check "$repo/.github/workflows/claude-code-review.yml"
+          done
