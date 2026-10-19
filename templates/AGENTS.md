@@ -15,6 +15,7 @@ Instructions for any coding agent (Claude Code, Cursor, Codex) and for people wo
 - Non-trivial work gets a plan in `docs/specs/` first. End each session with a handoff in `docs/handoffs/YYYY-MM-DD-<topic>.md`.
 - Never commit secrets, real customer data or `.env` files. Use synthetic data in tests and fixtures.
 - Standard: https://github.com/boycepoleonjr/conventions/blob/v{{conventions.version}}/STANDARD.md
+
 <!-- conventions:end agents-core -->
 
 <!-- conventions:begin agents-review -->
@@ -58,6 +59,7 @@ Do not flag behavior-preserving refactors (renames, function style, reordering).
 Run all of these before marking a PR ready, and report each with pass/fail:
 
 {{commands_list}}
+
 <!-- conventions:end agents-commands -->
 
 ## Repo rules

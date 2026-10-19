@@ -368,7 +368,7 @@ test("--only: accepts several ids, keeps other lock entries, rejects unknown ids
 });
 
 const unspaced = (t) => t.replace(/(<!-- conventions:begin \S+ -->)\n\n/g, "$1\n").replace(/\n\n(<!-- conventions:end \S+ -->)/g, "\n$1");
-const BLOCK_SPACING = /<!-- conventions:begin (\S+) -->\n\n[\s\S]*\n(\n)?<!-- conventions:end \1 -->/;
+const BLOCK_SPACING = /<!-- conventions:begin (\S+) -->\n\n[\s\S]*\n\n<!-- conventions:end \1 -->/;
 
 test("prettier-clean markdown: blocks have a blank line after the begin marker, repo text can follow without drift", () => {
   const repo = nodeRepo();
