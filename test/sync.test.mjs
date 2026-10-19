@@ -8,6 +8,9 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const CUR = fs.readFileSync(path.join(ROOT, "VERSION"), "utf8").trim();
+const NEXT = (() => { const [a, b] = CUR.split("."); return `${a}.${Number(b) + 1}.0`; })();
+const re = (v) => v.replace(/\./g, "\\.");
 const tmp = (p) => fs.mkdtempSync(path.join(os.tmpdir(), p));
 const write = (dir, rel, text) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); };
 const readF = (dir, rel) => fs.readFileSync(path.join(dir, rel), "utf8");
@@ -82,18 +85,18 @@ test("upgrade: new conventions version updates managed parts only", () => {
   sync(repo, ["--init"]);
   write(repo, "AGENTS.md", readF(repo, "AGENTS.md").replace("- Stack: TODO", "- Stack: Next.js 15"));
   const conv = copyConventions();
-  write(conv, "VERSION", "1.4.0\n");
-  write(conv, "templates/AGENTS.md", readF(conv, "templates/AGENTS.md").replace("## Shared rules", "## Shared rules\n- New rule in 1.4.0."));
+  write(conv, "VERSION", `${NEXT}\n`);
+  write(conv, "templates/AGENTS.md", readF(conv, "templates/AGENTS.md").replace("## Shared rules", `## Shared rules\n- New rule in ${NEXT}.`));
   const check = sync(repo, ["--check"], conv);
   assert.equal(check.code, 1);
   assert.match(check.out, /UPDATE\s+AGENTS\.md/);
-  assert.match(check.out, /v1\.3\.0 -> v1\.4\.0/);
+  assert.match(check.out, new RegExp(`v${re(CUR)} -> v${re(NEXT)}`));
   assert.equal(sync(repo, [], conv).code, 0);
   const agents = readF(repo, "AGENTS.md");
-  assert.match(agents, /New rule in 1\.4\.0/);
+  assert.ok(agents.includes(`New rule in ${NEXT}`));
   assert.match(agents, /Stack: Next\.js 15/);
-  assert.match(readF(repo, ".github/pull_request_template.md"), /v1\.4\.0/);
-  assert.equal(JSON.parse(readF(repo, ".conventions.lock.json")).version, "1.4.0");
+  assert.ok(readF(repo, ".github/pull_request_template.md").includes(`v${NEXT}`));
+  assert.equal(JSON.parse(readF(repo, ".conventions.lock.json")).version, NEXT);
 });
 
 test("hand edits to managed files are conflicts until --force", () => {
@@ -209,7 +212,7 @@ test("claude-review workflow: renders without focus, GitHub expressions intact, 
   const repo = nodeRepo();
   assert.equal(sync(repo, ["--init"]).code, 0);
   const y = readF(repo, WF);
-  assert.match(y, /^# Synced from boycepoleonjr\/conventions v1\.3\.0 /);
+  assert.ok(y.startsWith(`# Synced from boycepoleonjr/conventions v${CUR} `));
   for (const e of GH_EXPRS) assert.ok(y.includes(e), `lost ${e}`);
   assert.ok(!y.includes("{{conventions") && !y.includes("claude_review_focus"));
   assert.ok(!y.includes("Repo-specific focus"));
