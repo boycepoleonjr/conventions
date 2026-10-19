@@ -8,6 +8,9 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const CUR = fs.readFileSync(path.join(ROOT, "VERSION"), "utf8").trim();
+const NEXT = (() => { const [a, b] = CUR.split("."); return `${a}.${Number(b) + 1}.0`; })();
+const re = (v) => v.replace(/\./g, "\\.");
 const tmp = (p) => fs.mkdtempSync(path.join(os.tmpdir(), p));
 const write = (dir, rel, text) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); };
 const readF = (dir, rel) => fs.readFileSync(path.join(dir, rel), "utf8");
@@ -82,18 +85,18 @@ test("upgrade: new conventions version updates managed parts only", () => {
   sync(repo, ["--init"]);
   write(repo, "AGENTS.md", readF(repo, "AGENTS.md").replace("- Stack: TODO", "- Stack: Next.js 15"));
   const conv = copyConventions();
-  write(conv, "VERSION", "1.4.0\n");
-  write(conv, "templates/AGENTS.md", readF(conv, "templates/AGENTS.md").replace("## Shared rules", "## Shared rules\n- New rule in 1.4.0."));
+  write(conv, "VERSION", `${NEXT}\n`);
+  write(conv, "templates/AGENTS.md", readF(conv, "templates/AGENTS.md").replace("## Shared rules", `## Shared rules\n- New rule in ${NEXT}.`));
   const check = sync(repo, ["--check"], conv);
   assert.equal(check.code, 1);
   assert.match(check.out, /UPDATE\s+AGENTS\.md/);
-  assert.match(check.out, /v1\.3\.0 -> v1\.4\.0/);
+  assert.match(check.out, new RegExp(`v${re(CUR)} -> v${re(NEXT)}`));
   assert.equal(sync(repo, [], conv).code, 0);
   const agents = readF(repo, "AGENTS.md");
-  assert.match(agents, /New rule in 1\.4\.0/);
+  assert.ok(agents.includes(`New rule in ${NEXT}`));
   assert.match(agents, /Stack: Next\.js 15/);
-  assert.match(readF(repo, ".github/pull_request_template.md"), /v1\.4\.0/);
-  assert.equal(JSON.parse(readF(repo, ".conventions.lock.json")).version, "1.4.0");
+  assert.ok(readF(repo, ".github/pull_request_template.md").includes(`v${NEXT}`));
+  assert.equal(JSON.parse(readF(repo, ".conventions.lock.json")).version, NEXT);
 });
 
 test("hand edits to managed files are conflicts until --force", () => {
@@ -209,7 +212,7 @@ test("claude-review workflow: renders without focus, GitHub expressions intact, 
   const repo = nodeRepo();
   assert.equal(sync(repo, ["--init"]).code, 0);
   const y = readF(repo, WF);
-  assert.match(y, /^# Synced from boycepoleonjr\/conventions v1\.3\.0 /);
+  assert.ok(y.startsWith(`# Synced from boycepoleonjr/conventions v${CUR} `));
   for (const e of GH_EXPRS) assert.ok(y.includes(e), `lost ${e}`);
   assert.ok(!y.includes("{{conventions") && !y.includes("claude_review_focus"));
   assert.ok(!y.includes("Repo-specific focus"));
@@ -362,4 +365,55 @@ test("--only: accepts several ids, keeps other lock entries, rejects unknown ids
   assert.equal(bad.code, 3, bad.out);
   assert.match(bad.out, /unknown manifest id nope/);
   assert.equal(sync(repo, ["--only"]).code, 3);
+});
+
+const unspaced = (t) => t.replace(/(<!-- conventions:begin \S+ -->)\n\n/g, "$1\n").replace(/\n\n(<!-- conventions:end \S+ -->)/g, "\n$1");
+const BLOCK_SPACING = /<!-- conventions:begin (\S+) -->\n\n[\s\S]*\n\n<!-- conventions:end \1 -->/;
+
+test("prettier-clean markdown: blocks have a blank line after the begin marker, repo text can follow without drift", () => {
+  const repo = nodeRepo();
+  assert.equal(sync(repo, ["--init"]).code, 0);
+  for (const f of ["AGENTS.md", "CLAUDE.md"]) {
+    const text = readF(repo, f);
+    for (const m of text.matchAll(/<!-- conventions:begin (\S+) -->\n(.)/g)) assert.equal(m[2], "\n", `${f} ${m[1]}: blank line after begin marker`);
+    assert.match(text, BLOCK_SPACING);
+  }
+  assert.match(readF(repo, ".github/pull_request_template.md"), /\| Command {3}\| Result \|\n\| -{9} \| -{6} \|/, "aligned table");
+  write(repo, "AGENTS.md", readF(repo, "AGENTS.md") + "\n## Notes\n\n- Repo item.\n");
+  write(repo, "CLAUDE.md", readF(repo, "CLAUDE.md") + "\nClaude-only note.\n");
+  assert.equal(sync(repo, ["--check"]).code, 0);
+});
+
+test("upgrade from unspaced (pre-1.3.1) blocks: managed blocks reformatted, repo text untouched, then clean", () => {
+  const repo = nodeRepo();
+  const old = copyConventions();
+  for (const t of ["templates/AGENTS.md", "templates/CLAUDE.md"]) write(old, t, unspaced(readF(old, t)));
+  assert.equal(sync(repo, ["--init"], old).code, 0);
+  assert.ok(readF(repo, "AGENTS.md").includes("-->\n## Shared rules"), "fixture is unspaced");
+  write(repo, "AGENTS.md", readF(repo, "AGENTS.md").replace("- Stack: TODO", "- Stack: Next.js 15"));
+  const before = readF(repo, "AGENTS.md");
+  const check = sync(repo, ["--check"]);
+  assert.equal(check.code, 1, check.out);
+  assert.match(check.out, /UPDATE\s+AGENTS\.md/);
+  assert.equal(sync(repo).code, 0);
+  const after = readF(repo, "AGENTS.md");
+  const strip = (t) => t.replace(/<!-- conventions:begin (\S+) -->[\s\S]*?<!-- conventions:end \1 -->/g, "<$1>");
+  assert.equal(strip(after), strip(before));
+  assert.match(after, /Stack: Next\.js 15/);
+  assert.match(after, /<!-- conventions:begin agents-core -->\n\n## Shared rules/);
+  assert.equal(sync(repo, ["--check"]).code, 0);
+});
+
+test("block insertion keeps one blank line around the block (retrofit and missing-block paths)", () => {
+  const repo = nodeRepo();
+  write(repo, "AGENTS.md", "# AGENTS.md: legacy\nOur own notes right under the title.\n");
+  write(repo, "CLAUDE.md", "Claude-only note.\n@AGENTS.md\nMore notes.\n");
+  assert.equal(sync(repo, ["--init"]).code, 0);
+  const agents = readF(repo, "AGENTS.md");
+  assert.match(agents, /^# AGENTS\.md: legacy\n\n<!-- conventions:begin agents-core -->/);
+  assert.match(agents, /<!-- conventions:end agents-commands -->\n\nOur own notes right under the title\.\n$/);
+  assert.ok(!/\n\n\n/.test(agents), "no double blank lines");
+  const claude = readF(repo, "CLAUDE.md");
+  assert.match(claude, /^Claude-only note\.\n\n<!-- conventions:begin claude-import -->\n\n@AGENTS\.md\n\n<!-- conventions:end claude-import -->\n\nMore notes\.\n$/);
+  assert.equal(sync(repo, ["--check"]).code, 0);
 });

@@ -125,6 +125,13 @@ function blocksOf(text) {
 const blockText = (id, body) => `<!-- conventions:begin ${id} -->\n${body}<!-- conventions:end ${id} -->`;
 const managedHash = (blocks, ids) => sha(ids.map((id) => `${id}\n${blocks.get(id) ?? ""}`).join("\n"));
 
+// Replace text[start, end) with `blk`, leaving exactly one blank line on each side (Prettier-clean markdown).
+function spliceBlock(text, start, end, blk) {
+  const before = text.slice(0, start).replace(/\n+$/, "");
+  const after = text.slice(end).replace(/^\n+/, "");
+  return (before ? before + "\n\n" : "") + blk + (after ? "\n\n" + after : "\n");
+}
+
 function applyBlocks(current, desired, ids) {
   let text = current;
   const have = blocksOf(text);
@@ -136,18 +143,18 @@ function applyBlocks(current, desired, ids) {
     } else if (body.trim() && text.includes(body.trim())) {
       // Retrofit: the repo already has this exact content unmarked; wrap it instead of duplicating.
       const t = body.trim();
-      const end = text.indexOf(t) + t.length;
-      const after = text[end] === "\n" ? end + 1 : end;
-      text = text.slice(0, text.indexOf(t)) + blockText(id, body) + "\n" + text.slice(after);
+      const start = text.indexOf(t);
+      text = spliceBlock(text, start, start + t.length, blockText(id, body));
     } else if (prevId && text.includes(`<!-- conventions:end ${prevId} -->`)) {
       const end = `<!-- conventions:end ${prevId} -->`;
       text = text.replace(end, () => `${end}\n\n${blockText(id, body)}`);
     } else {
       const lines = text.split("\n");
       const h1 = lines.findIndex((l) => /^# /.test(l));
-      if (h1 >= 0) lines.splice(h1 + 1, 0, "", blockText(id, body));
-      else lines.unshift(blockText(id, body), "");
-      text = lines.join("\n");
+      if (h1 >= 0) {
+        const idx = lines.slice(0, h1 + 1).join("\n").length + 1;
+        text = spliceBlock(text, Math.min(idx, text.length), Math.min(idx, text.length), blockText(id, body));
+      } else text = spliceBlock(text, 0, 0, blockText(id, body));
     }
     prevId = id;
   }
