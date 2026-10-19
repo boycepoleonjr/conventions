@@ -363,3 +363,54 @@ test("--only: accepts several ids, keeps other lock entries, rejects unknown ids
   assert.match(bad.out, /unknown manifest id nope/);
   assert.equal(sync(repo, ["--only"]).code, 3);
 });
+
+const unspaced = (t) => t.replace(/(<!-- conventions:begin \S+ -->)\n\n/g, "$1\n").replace(/\n\n(<!-- conventions:end \S+ -->)/g, "\n$1");
+const BLOCK_SPACING = /<!-- conventions:begin (\S+) -->\n\n[\s\S]*\n(\n)?<!-- conventions:end \1 -->/;
+
+test("prettier-clean markdown: blocks have a blank line after the begin marker, repo text can follow without drift", () => {
+  const repo = nodeRepo();
+  assert.equal(sync(repo, ["--init"]).code, 0);
+  for (const f of ["AGENTS.md", "CLAUDE.md"]) {
+    const text = readF(repo, f);
+    for (const m of text.matchAll(/<!-- conventions:begin (\S+) -->\n(.)/g)) assert.equal(m[2], "\n", `${f} ${m[1]}: blank line after begin marker`);
+    assert.match(text, BLOCK_SPACING);
+  }
+  assert.match(readF(repo, ".github/pull_request_template.md"), /\| Command {3}\| Result \|\n\| -{9} \| -{6} \|/, "aligned table");
+  write(repo, "AGENTS.md", readF(repo, "AGENTS.md") + "\n## Notes\n\n- Repo item.\n");
+  write(repo, "CLAUDE.md", readF(repo, "CLAUDE.md") + "\nClaude-only note.\n");
+  assert.equal(sync(repo, ["--check"]).code, 0);
+});
+
+test("upgrade from unspaced (pre-1.3.1) blocks: managed blocks reformatted, repo text untouched, then clean", () => {
+  const repo = nodeRepo();
+  const old = copyConventions();
+  for (const t of ["templates/AGENTS.md", "templates/CLAUDE.md"]) write(old, t, unspaced(readF(old, t)));
+  assert.equal(sync(repo, ["--init"], old).code, 0);
+  assert.ok(readF(repo, "AGENTS.md").includes("-->\n## Shared rules"), "fixture is unspaced");
+  write(repo, "AGENTS.md", readF(repo, "AGENTS.md").replace("- Stack: TODO", "- Stack: Next.js 15"));
+  const before = readF(repo, "AGENTS.md");
+  const check = sync(repo, ["--check"]);
+  assert.equal(check.code, 1, check.out);
+  assert.match(check.out, /UPDATE\s+AGENTS\.md/);
+  assert.equal(sync(repo).code, 0);
+  const after = readF(repo, "AGENTS.md");
+  const strip = (t) => t.replace(/<!-- conventions:begin (\S+) -->[\s\S]*?<!-- conventions:end \1 -->/g, "<$1>");
+  assert.equal(strip(after), strip(before));
+  assert.match(after, /Stack: Next\.js 15/);
+  assert.match(after, /<!-- conventions:begin agents-core -->\n\n## Shared rules/);
+  assert.equal(sync(repo, ["--check"]).code, 0);
+});
+
+test("block insertion keeps one blank line around the block (retrofit and missing-block paths)", () => {
+  const repo = nodeRepo();
+  write(repo, "AGENTS.md", "# AGENTS.md: legacy\nOur own notes right under the title.\n");
+  write(repo, "CLAUDE.md", "Claude-only note.\n@AGENTS.md\nMore notes.\n");
+  assert.equal(sync(repo, ["--init"]).code, 0);
+  const agents = readF(repo, "AGENTS.md");
+  assert.match(agents, /^# AGENTS\.md: legacy\n\n<!-- conventions:begin agents-core -->/);
+  assert.match(agents, /<!-- conventions:end agents-commands -->\n\nOur own notes right under the title\.\n$/);
+  assert.ok(!/\n\n\n/.test(agents), "no double blank lines");
+  const claude = readF(repo, "CLAUDE.md");
+  assert.match(claude, /^Claude-only note\.\n\n<!-- conventions:begin claude-import -->\n\n@AGENTS\.md\n\n<!-- conventions:end claude-import -->\n\nMore notes\.\n$/);
+  assert.equal(sync(repo, ["--check"]).code, 0);
+});

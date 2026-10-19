@@ -3,7 +3,9 @@
 Instructions for any coding agent (Claude Code, Cursor, Codex) and for people working in this repo. The blocks between `conventions` markers are synced from https://github.com/boycepoleonjr/conventions; edit everything else here.
 
 <!-- conventions:begin agents-core -->
+
 ## Shared rules (conventions v{{conventions.version}})
+
 - Read this file, the README, `package.json` or equivalent, and `.github/workflows/` before changing code. Use the repo's real commands.
 - One branch per task (`<type>/<slug>`), Conventional Commits, minimal diffs: no refactors or unrelated edits in a fix PR.
 - Open a draft PR after the first commit. Mark it ready for review only when every command below passes and CI is green; AI reviews trigger on ready. Never merge.
@@ -16,10 +18,13 @@ Instructions for any coding agent (Claude Code, Cursor, Codex) and for people wo
 <!-- conventions:end agents-core -->
 
 <!-- conventions:begin agents-review -->
+
 ## Review guidelines
+
 For AI reviewers (Codex, Claude, Cursor) and people. Report real defects with a concrete failing scenario. Skip style nits that lint already covers.
 
 Treat as P1 (blocking):
+
 - Secrets, API or write keys, tokens or credentials in source, config or client bundles, even if they look like placeholders.
 - User-controlled input (query params, form fields, headers) reaching HTML (`dangerouslySetInnerHTML`, `innerHTML`), SQL, shell commands, redirects or file paths without escaping or validation.
 - Personal data (names, emails, phone numbers, addresses, IDs) written to logs, `console.*`, analytics events or error reporters.
@@ -28,15 +33,18 @@ Treat as P1 (blocking):
 - Version changes hidden in `overrides` or `resolutions`, or any other break of the shared rules above.
 
 Also check:
+
 - Off-by-one errors in indexes, ranges, modulo wraparound and pagination.
 - Stale closures in React effects, intervals and handlers; missing cleanup.
 - Bug fixes without a regression test for each path of the fix.
 - Non-trivial features without a plan in `docs/specs/`.
 
 Do not flag behavior-preserving refactors (renames, function style, reordering).
+
 <!-- conventions:end agents-review -->
 
 ## Project
+
 {{project.summary}}
 
 - Stack: TODO
@@ -44,11 +52,14 @@ Do not flag behavior-preserving refactors (renames, function style, reordering).
 - Default branch and protection: TODO
 
 <!-- conventions:begin agents-commands -->
+
 ## Commands
+
 Run all of these before marking a PR ready, and report each with pass/fail:
 
 {{commands_list}}
 <!-- conventions:end agents-commands -->
 
 ## Repo rules
+
 Repo-specific rules and known issues go here. They override the shared rules where they conflict.

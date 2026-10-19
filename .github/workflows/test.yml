@@ -18,19 +18,20 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: node --test test/*.test.mjs
       - run: bash -n scripts/cloud-setup.sh
-      - name: Prettier-check rendered claude-review workflow
+      - name: Prettier-check every rendered managed file
         if: matrix.node == 22
         run: |
           set -euo pipefail
-          out=$(mktemp -d)
-          for variant in plain focus; do
-            repo="$out/$variant"
-            mkdir -p "$repo"
-            echo '{"name":"demo","scripts":{"test":"t"}}' > "$repo/package.json"
-            node scripts/sync.mjs --repo "$repo" --init --only claude-review
-            if [ "$variant" = focus ]; then
-              node -e 'const fs=require("fs"),f=process.argv[1]+"/.conventions.json",c=JSON.parse(fs.readFileSync(f));c.claude_review={focus:"Check RLS on new tables.\nFlag raw SQL in routes."};fs.writeFileSync(f,JSON.stringify(c))' "$repo"
-              node scripts/sync.mjs --repo "$repo" --only claude-review
-            fi
-            npx --yes prettier@3 --no-config --check "$repo/.github/workflows/claude-code-review.yml"
-          done
+          repo=$(mktemp -d)
+          echo '{"name":"demo-app","scripts":{"lint":"eslint .","test":"jest","build":"next build"}}' > "$repo/package.json"
+          echo '{}' > "$repo/package-lock.json"
+          echo '{}' > "$repo/tsconfig.json"
+          node scripts/sync.mjs --repo "$repo" --init
+          node -e 'const fs=require("fs"),f=process.argv[1]+"/.conventions.json",c=JSON.parse(fs.readFileSync(f));c.claude_review={focus:"Check RLS on new tables.\nFlag raw SQL in routes."};fs.writeFileSync(f,JSON.stringify(c))' "$repo"
+          node scripts/sync.mjs --repo "$repo"
+          # Repo-owned text after the synced blocks must not break formatting or cause drift.
+          printf '\n## Notes\n\n- Repo-owned item one.\n- Repo-owned item two.\n\n```sh\nnpm run dev\n```\n' >> "$repo/AGENTS.md"
+          printf '\nClaude-only note.\n' >> "$repo/CLAUDE.md"
+          node scripts/sync.mjs --repo "$repo" --check
+          cd "$repo"
+          npx --yes prettier@3 --no-config --check AGENTS.md CLAUDE.md docs/specs/README.md docs/handoffs/README.md .github/pull_request_template.md .github/dependabot.yml .github/workflows/*.yml .claude/skills/*/SKILL.md

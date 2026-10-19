@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1 (2026-10-19)
+- Every rendered managed file is now Prettier 3 clean (defaults): blank lines around the synced block markers and headings in `AGENTS.md`, `CLAUDE.md` and the PR template, and an aligned table in the PR template. Wording and rules are unchanged; only whitespace differs. Synced repos get a one-time `UPDATE` of the managed blocks on the next sync (no hand edits are touched).
+- `sync.mjs` keeps exactly one blank line around a block it inserts or wraps (retrofit and missing-block paths), so repo-owned text next to a block does not make Prettier fail.
+- The test workflow renders every managed file with a realistic config (non-empty commands, review focus), appends repo-owned text after the blocks, checks that a re-sync is clean, and runs `prettier@3 --check` on all rendered files (replaces the claude-review-only step).
+
 ## 1.3.0 (2026-10-18)
 - Behavior change in the synced `claude-review` workflow (CI-4): it now also runs on every push (`synchronize`). A newer push cancels the older run and the newer run reviews the full diff, so nothing is skipped.
 - A missing `CLAUDE_CODE_OAUTH_TOKEN` now fails the job loudly (first step, `::error::` with the fix) instead of skipping the review. Repos without the secret should add it or add `claude-review` to `skip`.
