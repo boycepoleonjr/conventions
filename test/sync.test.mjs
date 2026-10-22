@@ -35,7 +35,7 @@ test("new repo: init creates everything, second run is clean", () => {
   const repo = nodeRepo();
   const first = sync(repo, ["--init"]);
   assert.equal(first.code, 0, first.out);
-  for (const f of ["AGENTS.md", "CLAUDE.md", ".github/pull_request_template.md", ".github/dependabot.yml", ".github/workflows/conventions-check.yml", ".github/workflows/claude-code-review.yml", "docs/specs/README.md", "docs/handoffs/README.md", ".claude/skills/open-pr/SKILL.md", ".conventions.json", ".conventions.lock.json"]) {
+  for (const f of ["AGENTS.md", "CLAUDE.md", ".github/pull_request_template.md", ".github/dependabot.yml", ".github/workflows/conventions-check.yml", ".github/workflows/claude-code-review.yml", ".github/workflows/deploy-secrets-lint.yml", "docs/specs/README.md", "docs/handoffs/README.md", ".claude/skills/open-pr/SKILL.md", ".conventions.json", ".conventions.lock.json"]) {
     assert.ok(fs.existsSync(path.join(repo, f)), `missing ${f}`);
   }
   const cfg = JSON.parse(readF(repo, ".conventions.json"));
