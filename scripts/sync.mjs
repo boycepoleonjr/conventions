@@ -83,6 +83,9 @@ function loadProfile(name) {
   return p;
 }
 
+// actions/checkout stays at v4.4.0 (v6+ persists the token through includeIf.gitdir, which claude-code-action does not clear).
+const CHECKOUT_IGNORE = `    # Checkout is held at v4.4.0 on purpose (see the Claude workflows).\n    ignore:\n      - dependency-name: "actions/checkout"\n        update-types: ["version-update:semver-major"]\n`;
+
 function vars(cfg, version) {
   const prof = loadProfile(cfg.profile);
   const commands = { ...prof.commands, ...(cfg.commands || {}) };
@@ -90,7 +93,7 @@ function vars(cfg, version) {
   const commands_list = listed.length ? listed.map(([k, v]) => `- ${k}: \`${v}\``).join("\n") : "- TODO: add commands to .conventions.json";
   const ecos = cfg.dependabot || prof.dependabot;
   const dependabot_updates = ecos
-    .map((e) => `  - package-ecosystem: "${e}"\n    directory: "/"\n    schedule:\n      interval: "weekly"\n    open-pull-requests-limit: 5\n    groups:\n      minor-and-patch:\n        applies-to: version-updates\n        update-types: ["minor", "patch"]\n      major:\n        applies-to: version-updates\n        update-types: ["major"]`)
+    .map((e) => `  - package-ecosystem: "${e}"\n    directory: "/"\n    schedule:\n      interval: "weekly"\n    open-pull-requests-limit: 5\n${e === "github-actions" ? CHECKOUT_IGNORE : ""}    groups:\n      minor-and-patch:\n        applies-to: version-updates\n        update-types: ["minor", "patch"]\n      major:\n        applies-to: version-updates\n        update-types: ["major"]`)
     .join("\n");
   return { project: cfg.project || {}, commands, conventions: { version }, profile: cfg.profile, commands_list, dependabot_updates, claude_review_focus: reviewFocus(cfg) };
 }
