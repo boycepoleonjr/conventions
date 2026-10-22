@@ -14,6 +14,7 @@ Instructions for any coding agent (Claude Code, Cursor, Codex) and for people wo
 - Dependency changes are declared openly in the manifest. Never hide a version change in `overrides` or `resolutions` while the manifest claims a different range. See `.claude/skills/dependency-update`.
 - Non-trivial work gets a plan in `docs/specs/` first. End each session with a handoff in `docs/handoffs/YYYY-MM-DD-<topic>.md`.
 - Never commit secrets, real customer data or `.env` files. Use synthetic data in tests and fixtures.
+- Deploy secrets (cloud tokens, account ids) live only in GitHub Environments restricted to specific branches (plus required reviewers where the plan allows), never as repository or organization secrets. Every job that reads them declares `environment:`; a new deploy branch is added to the environment's branch rule by an owner first; never reference them from `pull_request_target` or at workflow level.
 - Standard: https://github.com/boycepoleonjr/conventions/blob/v{{conventions.version}}/STANDARD.md
 
 <!-- conventions:end agents-core -->
