@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Fails when a GitHub Actions workflow reads a deploy secret outside a
-// protected GitHub Environment (STANDARD DEP-3).
+// GitHub Environment restricted to specific branches (STANDARD DEP-3). It
+// checks the workflow files only, not the environment's settings.
 //
 //   node scripts/lint-workflow-secrets.mjs [--repo <dir>] [--secret <regex>]
 //
@@ -110,7 +111,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   }
   const problems = lintRepo(repo, pattern);
   for (const p of problems) {
-    console.log(`::error file=${p.file}::${p.where}: ${p.why}. Put the secret in a protected GitHub Environment and add \`environment:\` to the job (STANDARD DEP-3).`);
+    console.log(`::error file=${p.file}::${p.where}: ${p.why}. Put the secret in a GitHub Environment restricted to specific branches and add \`environment:\` to the job (STANDARD DEP-3).`);
   }
   if (problems.length > 0) {
     console.error(`${problems.length} deploy-secret problem(s).`);
