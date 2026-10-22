@@ -35,8 +35,9 @@ Each item has a stable ID so audits and PRs can reference it. "Synced" means `sy
 - **SUP-5** Dependabot opens one grouped minor/patch PR and one grouped major PR per ecosystem weekly. Security updates arrive separately. Never merge the grouped major PR blindly: split it and do each major deliberately with the dependency-update skill. *(synced)*
 
 ## DEP: deploy
-- **DEP-1** Auto-deploy on merge to the production branch; secrets live only in the host or repo secrets.
+- **DEP-1** Auto-deploy on merge to the production branch.
 - **DEP-2** PR previews where the host supports them.
+- **DEP-3** Deploy secrets (cloud API tokens, account ids and any other credential that can change infrastructure or data) live only in protected GitHub Environments with a required reviewer, never as repository or organization secrets. Every job that reads one declares `environment:`; a production environment is limited to the production branch. No `pull_request_target` workflow and no workflow-level `env:` references them. Synced lint: `.github/workflows/deploy-secrets-lint.yml` runs `scripts/lint-workflow-secrets.mjs`, which fails on `secrets.CLOUDFLARE_*` (widen with `--secret`) read by a job without `environment:`. *(synced)*
 
 ## SET: repository settings
 - **SET-1** Default branch protected: PR required, required checks, no force push.

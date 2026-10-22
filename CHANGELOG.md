@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0 (2026-10-22)
+- New rule DEP-3 (and a line in the synced `agents-core` block): deploy secrets (cloud tokens, account ids) live only in protected GitHub Environments with a required reviewer, never as repository or organization secrets; every job that reads them declares `environment:`. DEP-1 no longer says "repo secrets". Origin: a Codex security finding on a PR whose branch workflow could read a repo-level Cloudflare token with no approval step.
+- New script `scripts/lint-workflow-secrets.mjs` (dependency free): fails when a job reads `secrets.CLOUDFLARE_*` without a job-level `environment:`, when the secret appears above `jobs:`, when a `pull_request_target` workflow references it, or when `secrets: inherit` is passed from a job without an environment. `--secret <regex>` widens the pattern.
+- New synced workflow `.github/workflows/deploy-secrets-lint.yml` (manifest id `deploy-secrets-lint`, mode `replace`, all profiles, skippable): runs the script from the pinned conventions version on every PR and push to `main`. Synced repos get one new file on the next sync; a repo that already keeps deploy secrets in environments passes unchanged, a repo that does not will fail until it moves them.
+
 ## 1.3.1 (2026-10-19)
 - Every rendered managed file is now Prettier 3 clean (defaults): blank lines around the synced block markers and headings in `AGENTS.md`, `CLAUDE.md` and the PR template, and an aligned table in the PR template. Wording and rules are unchanged; only whitespace differs. Synced repos get a one-time `UPDATE` of the managed blocks on the next sync (no hand edits are touched).
 - `sync.mjs` keeps exactly one blank line around a block it inserts or wraps (retrofit and missing-block paths), so repo-owned text next to a block does not make Prettier fail.

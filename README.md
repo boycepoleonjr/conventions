@@ -49,6 +49,16 @@ The Claude review workflow (`claude-review`, CI-4) reads optional repo-specific 
 { "claude_review": { "focus": "Check RLS policies on every new table.\nFlag any new public route without auth." } }
 ```
 
+## Deploy secrets lint
+
+The synced `deploy-secrets-lint` workflow (DEP-3) runs `scripts/lint-workflow-secrets.mjs` on every PR. It fails when a job reads `secrets.CLOUDFLARE_*` without a job-level `environment:`, when the secret is referenced above `jobs:`, or from a `pull_request_target` workflow. Widen the pattern with `--secret`, for example:
+
+```bash
+node /tmp/conventions/scripts/lint-workflow-secrets.mjs --repo . --secret 'CLOUDFLARE_[A-Z0-9_]+|FLY_API_TOKEN'
+```
+
+The check is line based (no YAML parser) and expects block-style workflows with 2-space indentation.
+
 ## Cloud sessions
 
 Point a Claude Code cloud environment's setup script at:
