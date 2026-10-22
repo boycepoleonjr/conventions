@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0 (2026-10-22)
+- Behavior change in the synced `dependabot.yml`: the `github-actions` ecosystem now ignores `actions/checkout` for `version-update:semver-major`. Checkout is held at v4.4.0 on purpose: v6+ persists the token through `includeIf.gitdir`, which `claude-code-action` does not clear, so the token would stay usable during the Claude run. This is a deliberate, narrow exception to the "no `ignore` rule" decision in 1.1.0: only `actions/checkout`, only major version updates, no other dependency or ecosystem. A security fix that ships only in a newer checkout major will not get a Dependabot PR; check checkout's advisories by hand when you review the pin.
+- The dependabot test now allows exactly that rule and still fails on any other `ignore`.
+- Synced repos get a one-time `UPDATE` of `.github/dependabot.yml` on the next sync.
+
 ## 1.3.1 (2026-10-19)
 - Every rendered managed file is now Prettier 3 clean (defaults): blank lines around the synced block markers and headings in `AGENTS.md`, `CLAUDE.md` and the PR template, and an aligned table in the PR template. Wording and rules are unchanged; only whitespace differs. Synced repos get a one-time `UPDATE` of the managed blocks on the next sync (no hand edits are touched).
 - `sync.mjs` keeps exactly one blank line around a block it inserts or wraps (retrofit and missing-block paths), so repo-owned text next to a block does not make Prettier fail.

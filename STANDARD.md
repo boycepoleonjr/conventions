@@ -32,7 +32,7 @@ Each item has a stable ID so audits and PRs can reference it. "Synced" means `sy
 - **SUP-2** Dependabot weekly for github-actions and the package ecosystem. *(synced)*
 - **SUP-3** Workflow `permissions:` least privilege, default `contents: read`.
 - **SUP-4** Dependency changes are declared openly in the manifest. Never hide a version change inside `overrides`/`resolutions` while the manifest claims a different range; if an override is unavoidable, explain it in the PR. *(skill: dependency-update)*
-- **SUP-5** Dependabot opens one grouped minor/patch PR and one grouped major PR per ecosystem weekly. Security updates arrive separately. Never merge the grouped major PR blindly: split it and do each major deliberately with the dependency-update skill. *(synced)*
+- **SUP-5** Dependabot opens one grouped minor/patch PR and one grouped major PR per ecosystem weekly. Security updates arrive separately. Never merge the grouped major PR blindly: split it and do each major deliberately with the dependency-update skill. The one exception is `actions/checkout`, whose majors are ignored (held at v4.4.0, see CHANGELOG 1.4.0). *(synced)*
 
 ## DEP: deploy
 - **DEP-1** Auto-deploy on merge to the production branch; secrets live only in the host or repo secrets.
