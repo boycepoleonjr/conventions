@@ -1,7 +1,7 @@
 # Changelog
 
 ## 1.4.0 (2026-10-22)
-- Behavior change in the synced `dependabot.yml`: the `github-actions` ecosystem now ignores `actions/checkout` for `version-update:semver-major`. Checkout is held at v4.4.0 on purpose: v6+ persists the token through `includeIf.gitdir`, which `claude-code-action` does not clear, so the token would stay usable during the Claude run. This is a deliberate, narrow exception to the "no `ignore` rule" decision in 1.1.0: only `actions/checkout`, only major version updates, no other dependency or ecosystem. A security fix that ships only in a newer checkout major will not get a Dependabot PR; check checkout's advisories by hand when you review the pin.
+- Behavior change in the synced `dependabot.yml`: the `github-actions` ecosystem now ignores `actions/checkout` for `version-update:semver-major`. Checkout is held at v4.4.0 on purpose: v6+ persists the token through `includeIf.gitdir`, which `claude-code-action` does not clear, so the token would stay usable during the Claude run. This is a deliberate, narrow exception to the "no `ignore` rule" decision in 1.1.0: only `actions/checkout`, only major version updates, no other dependency or ecosystem. A security fix that ships only in a newer checkout major will not get a Dependabot PR; check checkout's releases and advisories by hand once a quarter (new STANDARD rule SUP-6) and decide whether the pin can move.
 - The dependabot test now allows exactly that rule and still fails on any other `ignore`.
 - Synced repos get a one-time `UPDATE` of `.github/dependabot.yml` on the next sync.
 
