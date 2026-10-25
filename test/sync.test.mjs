@@ -182,7 +182,7 @@ test("upgrade from 1.0.0: agents-review is inserted after agents-core, repo text
   assert.equal(sync(repo, ["--check"]).code, 0);
 });
 
-test("dependabot: every ecosystem has version-update groups for minor/patch and major, no ignore", () => {
+test("dependabot: every ecosystem has version-update groups for minor/patch and major; only github-actions ignores checkout majors", () => {
   const repo = nodeRepo();
   assert.equal(sync(repo, ["--init"]).code, 0);
   const y = readF(repo, ".github/dependabot.yml");
@@ -191,7 +191,12 @@ test("dependabot: every ecosystem has version-update groups for minor/patch and 
   assert.equal(entries.length, 2);
   for (const e of entries) {
     assert.match(e, /\n    groups:\n      minor-and-patch:\n        applies-to: version-updates\n        update-types: \["minor", "patch"\]\n      major:\n        applies-to: version-updates\n        update-types: \["major"\]/);
-    assert.ok(!e.includes("ignore"), "majors must not be ignored (would block security updates)");
+    if (e.startsWith(': "github-actions"')) {
+      assert.match(e, /\n    ignore:\n      - dependency-name: "actions\/checkout"\n        update-types: \["version-update:semver-major"\]\n    groups:/);
+      assert.equal(e.match(/dependency-name/g).length, 1, "only actions/checkout is ignored");
+    } else {
+      assert.ok(!e.includes("ignore"), "majors must not be ignored (would block security updates)");
+    }
   }
   assert.ok(!y.includes("\t"), "no tabs in YAML");
 });
