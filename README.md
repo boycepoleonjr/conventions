@@ -43,6 +43,14 @@ node /tmp/conventions/scripts/sync.mjs --repo . --only claude-review --force  # 
 
 `--only` works with `--init`, `--check`, `--force` and plain apply. Files outside the list are neither written nor reported, and the lock keeps their existing entries. A later full `sync.mjs --repo .` works normally and treats files that already match as clean. Unknown ids exit 3.
 
+Repos with a staging-first flow can point Dependabot version updates at that branch. The option is unset by default, so Dependabot targets the default branch:
+
+```json
+{ "dependabot_target_branch": "staging" }
+```
+
+It adds `target-branch: "staging"` to every ecosystem in the synced `dependabot.yml`. Per GitHub's reference, `target-branch` applies to version updates only; security updates still target the default branch.
+
 The Claude review workflow (`claude-review`, CI-4) reads optional repo-specific focus from `.conventions.json`:
 
 ```json

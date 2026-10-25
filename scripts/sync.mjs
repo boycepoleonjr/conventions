@@ -86,14 +86,23 @@ function loadProfile(name) {
 // actions/checkout stays at v4.4.0 (v6+ persists the token through includeIf.gitdir, which claude-code-action does not clear).
 const CHECKOUT_IGNORE = `    # Checkout is held at v4.4.0 on purpose (see the Claude workflows).\n    ignore:\n      - dependency-name: "actions/checkout"\n        update-types: ["version-update:semver-major"]\n`;
 
+// Optional `dependabot_target_branch` in .conventions.json: version-update PRs target that branch instead of the default branch.
+function dependabotTargetBranch(cfg) {
+  const b = cfg.dependabot_target_branch;
+  if (b === undefined || b === null || b === "") return "";
+  if (typeof b !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._\/-]*$/.test(b)) throw new Error('dependabot_target_branch must be a branch name such as "staging" (letters, digits, ".", "_", "-", "/")');
+  return `    target-branch: "${b}"\n`;
+}
+
 function vars(cfg, version) {
   const prof = loadProfile(cfg.profile);
   const commands = { ...prof.commands, ...(cfg.commands || {}) };
   const listed = Object.entries(commands).filter(([, v]) => v);
   const commands_list = listed.length ? listed.map(([k, v]) => `- ${k}: \`${v}\``).join("\n") : "- TODO: add commands to .conventions.json";
   const ecos = cfg.dependabot || prof.dependabot;
+  const targetBranch = dependabotTargetBranch(cfg);
   const dependabot_updates = ecos
-    .map((e) => `  - package-ecosystem: "${e}"\n    directory: "/"\n    schedule:\n      interval: "weekly"\n    open-pull-requests-limit: 5\n${e === "github-actions" ? CHECKOUT_IGNORE : ""}    groups:\n      minor-and-patch:\n        applies-to: version-updates\n        update-types: ["minor", "patch"]\n      major:\n        applies-to: version-updates\n        update-types: ["major"]`)
+    .map((e) => `  - package-ecosystem: "${e}"\n    directory: "/"\n    schedule:\n      interval: "weekly"\n    open-pull-requests-limit: 5\n${targetBranch}${e === "github-actions" ? CHECKOUT_IGNORE : ""}    groups:\n      minor-and-patch:\n        applies-to: version-updates\n        update-types: ["minor", "patch"]\n      major:\n        applies-to: version-updates\n        update-types: ["major"]`)
     .join("\n");
   return { project: cfg.project || {}, commands, conventions: { version }, profile: cfg.profile, commands_list, dependabot_updates, claude_review_focus: reviewFocus(cfg) };
 }
