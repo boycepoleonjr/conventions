@@ -67,10 +67,51 @@ test("pull_request_target plus the secret fails, even with an environment", () =
   assert.deepEqual(lintWorkflow(bad.replace("secrets.CLOUDFLARE_API_TOKEN", "secrets.OTHER")), []);
 });
 
-test("secrets: inherit from a job without an environment fails", () => {
-  const text = `on: push\njobs:\n  call:\n    uses: ./.github/workflows/deploy.yml\n    secrets: inherit\n`;
-  assert.deepEqual(wheres(text), ["job call"]);
-  assert.deepEqual(wheres(text.replace("    secrets: inherit", "    environment: production\n    secrets: inherit")), []);
+test("secrets: inherit into an external reusable workflow fails; into a local one is left to that workflow's own lint", () => {
+  const external = `on: push\njobs:\n  call:\n    uses: some-org/shared/.github/workflows/deploy.yml@v1\n    secrets: inherit\n`;
+  assert.deepEqual(wheres(external), ["job call"]);
+  assert.deepEqual(wheres(external.replace("some-org/shared/.github/workflows/deploy.yml@v1", "./.github/workflows/deploy.yml")), []);
+});
+
+test("a caller passing a deploy secret to a reusable workflow fails with advice that fits (it cannot declare an environment)", () => {
+  const text = `on: push\njobs:\n  call:\n    uses: ./.github/workflows/deploy.yml\n    secrets:\n      CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}\n`;
+  const [problem] = lintWorkflow(text);
+  assert.equal(problem.where, "job call");
+  assert.match(problem.why, /reusable workflow/);
+  assert.match(problem.why, /called workflow/);
+});
+
+const step = (expr) => `on: push\njobs:\n  d:\n    steps:\n      - run: x\n        env:\n          T: \${{ ${expr} }}\n`;
+
+test("secret names are case-insensitive, and bracket syntax counts", () => {
+  for (const expr of ["secrets.cloudflare_api_token", "secrets.Cloudflare_Account_Id", "secrets['CLOUDFLARE_API_TOKEN']", 'secrets["cloudflare_api_token"]', "secrets . CLOUDFLARE_API_TOKEN"]) {
+    assert.deepEqual(wheres(step(expr)), ["job d"], expr);
+  }
+});
+
+test("whole-context and dynamic access count as reading every secret", () => {
+  for (const expr of ["toJSON(secrets)", "secrets[matrix.name]", "secrets[format('CLOUDFLARE_{0}', matrix.k)]"]) {
+    assert.deepEqual(wheres(step(expr)), ["job d"], expr);
+  }
+  // ...and pass with an environment
+  assert.deepEqual(wheres(step("toJSON(secrets)").replace("  d:\n", "  d:\n    environment: preview\n")), []);
+});
+
+test("other secrets are not matched by a loose pattern", () => {
+  for (const expr of ["secrets.CLAUDE_CODE_OAUTH_TOKEN", "secrets.NOT_CLOUDFLARE_X", "secrets.GITHUB_TOKEN"]) {
+    assert.deepEqual(wheres(step(expr)), [], expr);
+  }
+});
+
+test("fails closed when a reference cannot be attributed to a job", () => {
+  const fourSpaces = "on: push\njobs:\n    d:\n        steps:\n          - run: x\n            env:\n              T: ${{ secrets.CLOUDFLARE_API_TOKEN }}\n";
+  assert.deepEqual(wheres(fourSpaces), ["workflow"]);
+  const flow = "on: push\njobs: {d: {steps: [{run: x, env: {T: '${{ secrets.CLOUDFLARE_API_TOKEN }}'}}]}}\n";
+  assert.ok(wheres(flow).length > 0);
+  const afterJobs = `${good}env:\n  T: \${{ secrets.CLOUDFLARE_API_TOKEN }}\n`;
+  assert.deepEqual(wheres(afterJobs), ["workflow"]);
+  // clean files with an environment are unaffected
+  assert.deepEqual(lintWorkflow(good), []);
 });
 
 test("a nested key named environment is not the job environment", () => {
