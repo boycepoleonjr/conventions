@@ -134,6 +134,36 @@ test("a workflow with no jobs: block does not crash", () => {
   assert.deepEqual(lintWorkflow("name: x\non: push\n"), []);
 });
 
+test("a job header with a trailing comment is still a job boundary", () => {
+  const unprotected = without(good, "    environment:\n      name: production\n");
+  assert.deepEqual(wheres(unprotected.replace("  deploy:\n", "  deploy: # production deployment\n")), ["job deploy"]);
+  assert.deepEqual(lintWorkflow(good.replace("  deploy:\n", "  deploy: # production deployment\n")), []);
+});
+
+test("an unprotected job with a commented header is not hidden inside the protected job above it", () => {
+  const two = `${good}  other: # extra\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo\n        env:\n          T: \${{ secrets.CLOUDFLARE_API_TOKEN }}\n`;
+  assert.deepEqual(wheres(two), ["job other"]);
+});
+
+test("jobs: with a trailing comment is still found", () => {
+  const bad = without(good, "    environment:\n      name: production\n").replace("jobs:\n", "jobs: # all jobs\n");
+  assert.deepEqual(wheres(bad), ["job deploy"]);
+});
+
+test("secrets: inherit with a trailing comment still fails for an external reusable workflow", () => {
+  const text = `on: push\njobs:\n  call:\n    uses: org/repo/.github/workflows/deploy.yml@v1\n    secrets: inherit # pass everything\n`;
+  assert.deepEqual(wheres(text), ["job call"]);
+});
+
+test("pull_request_target declared after the jobs block plus the secret fails", () => {
+  const bad = good.replace("on:\n  push:\n    branches: [main]\n", "").concat("on:\n  pull_request_target:\n");
+  assert.deepEqual(wheres(bad), ["workflow"]);
+});
+
+test("top-level keys after the jobs block without a secret stay clean", () => {
+  assert.deepEqual(lintWorkflow(`${good}# trailing notes\nenv:\n  CI: true\n`), []);
+});
+
 function repoWith(files) {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), "lint-"));
   fs.mkdirSync(path.join(repo, ".github/workflows"), { recursive: true });

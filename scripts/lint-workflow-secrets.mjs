@@ -50,10 +50,13 @@ export function lintWorkflow(text, secretPattern = DEFAULT_SECRET) {
   const totalRefs = lines.filter((l) => code(l) && readsSecret(l)).length;
   let attributedRefs = 0;
 
-  const jobsAt = lines.findIndex((l) => /^jobs:\s*$/.test(l));
+  const jobsAt = lines.findIndex((l) => /^jobs:\s*(#.*)?$/.test(l));
   const header = lines.slice(0, jobsAt === -1 ? lines.length : jobsAt);
+  // Top-level keys (`on:` included) can also follow the jobs block.
+  const nextTopLevel = lines.findIndex((l, i) => i > jobsAt && l.trim() !== "" && !isComment(l) && indentOf(l) === 0);
+  const afterJobs = jobsAt === -1 || nextTopLevel === -1 ? [] : lines.slice(nextTopLevel);
 
-  if (totalRefs > 0 && header.some((l) => code(l) && /\bpull_request_target\b/.test(l))) {
+  if (totalRefs > 0 && [...header, ...afterJobs].some((l) => code(l) && /\bpull_request_target\b/.test(l))) {
     problems.push({ where: "workflow", why: "pull_request_target workflow references a deploy secret" });
   }
   const headerRefs = header.filter((l) => code(l) && readsSecret(l)).length;
@@ -76,7 +79,7 @@ export function lintWorkflow(text, secretPattern = DEFAULT_SECRET) {
       // that workflow's own jobs. Into an external one it hands over every
       // repository secret to code this check cannot see.
       const inheritsToExternal =
-        key(/^secrets\s*:\s*inherit\s*$/) && body.some((l) => code(l) && indentOf(l) === 4 && /^uses\s*:\s*(?!\.\/)\S/.test(l.trim()));
+        key(/^secrets\s*:\s*inherit\s*(#.*)?$/) && body.some((l) => code(l) && indentOf(l) === 4 && /^uses\s*:\s*(?!\.\/)\S/.test(l.trim()));
       if (refs > 0 && !hasEnvironment) {
         // A job that calls a reusable workflow cannot declare `environment:`
         // itself, so the fix is different: do not pass the secret in.
@@ -100,9 +103,9 @@ export function lintWorkflow(text, secretPattern = DEFAULT_SECRET) {
         continue;
       }
       if (indentOf(line) === 0) break; // next top-level key
-      if (indentOf(line) === 2 && /^[A-Za-z0-9_-]+:\s*$/.test(line.trim())) {
+      if (indentOf(line) === 2 && /^[A-Za-z0-9_-]+:\s*(#.*)?$/.test(line.trim())) {
         flush();
-        name = line.trim().slice(0, -1);
+        name = line.trim().split(":")[0];
         body = [];
       } else {
         body.push(line);
