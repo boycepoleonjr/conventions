@@ -57,6 +57,18 @@ The Claude review workflow (`claude-review`, CI-4) reads optional repo-specific 
 { "claude_review": { "focus": "Check RLS policies on every new table.\nFlag any new public route without auth." } }
 ```
 
+## Deploy secrets lint
+
+The synced `deploy-secrets-lint` workflow (DEP-3) runs `scripts/lint-workflow-secrets.mjs` on every PR. It fails when a job reads `secrets.CLOUDFLARE_*` without a job-level `environment:`, when the secret is referenced above `jobs:`, or from a `pull_request_target` workflow. Widen the pattern with `--secret`, for example:
+
+```bash
+node /tmp/conventions/scripts/lint-workflow-secrets.mjs --repo . --secret 'CLOUDFLARE_[A-Z0-9_]+|FLY_API_TOKEN'
+```
+
+The check is line based (no YAML parser) and expects block-style workflows with 2-space indentation. It fails closed: a secret reference it cannot attribute to a job (4-space indentation, flow-style `jobs: {...}`, a key after `jobs:`) is an error, not a pass. Secret names match case-insensitively, `secrets['NAME']` counts, and `toJSON(secrets)` or `secrets[<expression>]` count as reading every secret. A job that calls a reusable workflow cannot declare `environment:`, so passing a deploy secret to one is flagged (read it in the called workflow's job instead), and `secrets: inherit` into an external reusable workflow is flagged; a local callee is linted as its own file.
+
+Limits: this is a guardrail against mistakes, not a security boundary. A PR can edit or delete the workflow or the script's pinned version, so make the `Deploy secrets lint` check required in branch protection. `workflow_run` workflows (they run with secrets after an untrusted workflow) are not checked beyond the job rules. It cannot see repository or environment settings.
+
 ## Cloud sessions
 
 Point a Claude Code cloud environment's setup script at:
