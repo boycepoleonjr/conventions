@@ -201,6 +201,41 @@ test("dependabot: every ecosystem has version-update groups for minor/patch and 
   assert.ok(!y.includes("\t"), "no tabs in YAML");
 });
 
+test("dependabot: target-branch is absent by default and, when configured, set on every ecosystem", () => {
+  const repo = nodeRepo();
+  assert.equal(sync(repo, ["--init"]).code, 0);
+  assert.ok(!readF(repo, ".github/dependabot.yml").includes("target-branch"));
+  const cfg = JSON.parse(readF(repo, ".conventions.json"));
+  cfg.dependabot_target_branch = "staging";
+  write(repo, ".conventions.json", JSON.stringify(cfg));
+  assert.equal(sync(repo, ["--force"]).code, 0);
+  const y = readF(repo, ".github/dependabot.yml");
+  assert.equal(y.match(/\n    target-branch: "staging"\n/g).length, 2);
+  const entries = y.split("\n  - package-ecosystem").slice(1);
+  for (const e of entries) assert.match(e, /open-pull-requests-limit: 5\n    target-branch: "staging"\n/);
+  assert.match(y, /ignore:\n      - dependency-name: "actions\/checkout"/);
+  assert.equal(sync(repo, ["--check"]).code, 0);
+  cfg.dependabot_target_branch = "";
+  write(repo, ".conventions.json", JSON.stringify(cfg));
+  assert.equal(sync(repo, ["--force"]).code, 0);
+  assert.ok(!readF(repo, ".github/dependabot.yml").includes("target-branch"), "empty string means unset");
+});
+
+test("dependabot: invalid target-branch values are rejected before anything is written", () => {
+  for (const bad of ['staging"\n  evil: 1', "has space", 42, "-leading-dash", "a\nb"]) {
+    const repo = nodeRepo();
+    assert.equal(sync(repo, ["--init"]).code, 0);
+    const before = readF(repo, ".github/dependabot.yml");
+    const cfg = JSON.parse(readF(repo, ".conventions.json"));
+    cfg.dependabot_target_branch = bad;
+    write(repo, ".conventions.json", JSON.stringify(cfg));
+    const r = sync(repo, ["--force"]);
+    assert.notEqual(r.code, 0, `${JSON.stringify(bad)} must fail`);
+    assert.match(r.out, /dependabot_target_branch/);
+    assert.equal(readF(repo, ".github/dependabot.yml"), before);
+  }
+});
+
 const WF = ".github/workflows/claude-code-review.yml";
 const yamlParses = (text) => {
   const probe = spawnSync("python3", ["-c", "import yaml"]);

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.0 (2026-10-25)
+- New optional `dependabot_target_branch` in `.conventions.json` (unset by default). When set, every ecosystem in the synced `dependabot.yml` gets `target-branch: "<branch>"`, so repos with a staging-first flow stop getting Dependabot version-update PRs into the default branch. Per GitHub's reference, `target-branch` applies to version updates only; security updates still target the default branch.
+- The value is validated (a branch name: letters, digits, `.`, `_`, `-`, `/`; no quotes, spaces or newlines) and sync exits non-zero without writing anything otherwise. An empty string means unset.
+- Repos that do not set it get a byte-identical `dependabot.yml`; no sync is needed beyond the version bump.
+
 ## 1.4.0 (2026-10-22)
 - Behavior change in the synced `dependabot.yml`: the `github-actions` ecosystem now ignores `actions/checkout` for `version-update:semver-major`. Checkout is held at v4.4.0 on purpose: v6+ persists the token through `includeIf.gitdir`, which `claude-code-action` does not clear, so the token would stay usable during the Claude run. This is a deliberate, narrow exception to the "no `ignore` rule" decision in 1.1.0: only `actions/checkout`, only major version updates, no other dependency or ecosystem. A security fix that ships only in a newer checkout major will not get a Dependabot PR; check checkout's releases and advisories by hand once a quarter (new STANDARD rule SUP-6) and decide whether the pin can move.
 - The dependabot test now allows exactly that rule and still fails on any other `ignore`.
