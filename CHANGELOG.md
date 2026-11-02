@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.2 (2026-11-02)
+- Bump `anthropics/claude-code-action` in the synced `claude-code-review.yml` from v1.0.253 (`5eb090f3c3afd701a0672cd32981197ca27688f6`) to v1.0.264, still pinned by full commit SHA `d70510b174a1244958df0b03166a54912811f3e6` (SUP-1). I checked that the `v1.0.264` tag resolves to that commit. This is the commit Dependabot proposed in boycepoleonjr/durable-agent#11. `actions/checkout` stays at v4.4.0. Nothing else in the workflow changed.
+- Synced repos get a one-time `UPDATE` of `.github/workflows/claude-code-review.yml` on the next sync. This could not go into v1.6.0 because v1.6.0 and v1.6.1 were already published.
+
 ## 1.6.1 (2026-11-02)
 - Claude Code no longer adds AI attribution in synced repos. New synced file `.claude/settings.json` (manifest id `claude-settings`, new mode `json-merge`, all profiles, skippable) sets `attribution.commit` and `attribution.pr` to empty strings and `attribution.sessionUrl` to `false`, plus the deprecated `includeCoAuthoredBy: false` for older Claude Code versions. Per the settings reference, `attribution` replaced `includeCoAuthoredBy` in v2.0.62, and Claude Code ignores `includeCoAuthoredBy` once `commit` or `pr` is set, so both can coexist.
 - `json-merge` is a new sync mode: the template's keys are set in an existing file, objects merge, arrays are unioned, and all other keys are kept. A missing file is created; a file that is not a JSON object is a `CONFLICT`. It is idempotent and `--check` reports drift when a managed key is missing or different.

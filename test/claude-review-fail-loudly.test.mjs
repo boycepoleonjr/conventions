@@ -58,7 +58,7 @@ test("allowedTools: the files endpoint is allowed, PR-scoped, and there is no bl
 
 test("kept as before: pins, permissions, concurrency, skips", () => {
   assert.match(rendered, /actions\/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4\.4\.0/);
-  assert.match(rendered, /claude-code-action@5eb090f3c3afd701a0672cd32981197ca27688f6 # v1\.0\.253/);
+  assert.match(rendered, /claude-code-action@d70510b174a1244958df0b03166a54912811f3e6 # v1\.0\.264/);
   assert.match(rendered, /^permissions: \{\}$/m);
   assert.match(rendered, /^ {4}permissions:\n {6}contents: read\n {6}pull-requests: read\n {6}issues: read\n {6}id-token: write\n/m);
   assert.match(rendered, /concurrency:\n {2}group: claude-review-\$\{\{ github\.event\.pull_request\.number \}\}\n {2}cancel-in-progress: true/);
