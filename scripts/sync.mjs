@@ -49,6 +49,18 @@ const sortKeys = (o) =>
     : Object.fromEntries(Object.keys(o).sort().map((k) => [k, sortKeys(o[k])]));
 const toJson = (o) => JSON.stringify(sortKeys(o), null, 2) + "\n";
 
+// Deep-merge the template into an existing JSON file: the template wins on the keys it sets, objects merge,
+// arrays are unioned (existing order first), and every other key in the file is kept as is.
+function mergeJson(cur, want) {
+  if (Array.isArray(cur) && Array.isArray(want)) return [...cur, ...want.filter((w) => !cur.some((c) => JSON.stringify(c) === JSON.stringify(w)))];
+  if (cur && want && typeof cur === "object" && typeof want === "object" && !Array.isArray(cur) && !Array.isArray(want)) {
+    const out = { ...cur };
+    for (const k of Object.keys(want)) out[k] = k in cur ? mergeJson(cur[k], want[k]) : want[k];
+    return out;
+  }
+  return want;
+}
+
 function detect(repo, a) {
   const has = (f) => fs.existsSync(path.join(repo, f));
   const pkg = readJson(path.join(repo, "package.json"));
@@ -206,6 +218,21 @@ export function plan(repo, opts = {}) {
 
     if (f.mode === "seed") {
       actions.push(current === null ? { status: "CREATE", dest: f.dest, content: desired } : { status: "OK", dest: f.dest, note: "seed exists" });
+      continue;
+    }
+    if (f.mode === "json-merge") {
+      let cur = null;
+      if (current !== null) {
+        try { cur = JSON.parse(current); } catch { cur = undefined; }
+        if (cur === undefined || cur === null || typeof cur !== "object" || Array.isArray(cur)) {
+          actions.push({ status: "CONFLICT", dest: f.dest, note: "not a JSON object; merge the managed keys by hand or add to skip" });
+          continue;
+        }
+      }
+      if (cur === null) { actions.push({ status: "CREATE", dest: f.dest, content: desired }); continue; }
+      const merged = mergeJson(cur, JSON.parse(desired));
+      if (JSON.stringify(merged) === JSON.stringify(cur)) actions.push({ status: "OK", dest: f.dest });
+      else actions.push({ status: "UPDATE", dest: f.dest, content: JSON.stringify(merged, null, 2) + "\n", note: "managed keys merged, other keys kept" });
       continue;
     }
     if (f.mode === "replace") {

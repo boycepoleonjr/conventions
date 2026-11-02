@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.1 (2026-11-02)
+- Claude Code no longer adds AI attribution in synced repos. New synced file `.claude/settings.json` (manifest id `claude-settings`, new mode `json-merge`, all profiles, skippable) sets `attribution.commit` and `attribution.pr` to empty strings and `attribution.sessionUrl` to `false`, plus the deprecated `includeCoAuthoredBy: false` for older Claude Code versions. Per the settings reference, `attribution` replaced `includeCoAuthoredBy` in v2.0.62, and Claude Code ignores `includeCoAuthoredBy` once `commit` or `pr` is set, so both can coexist.
+- `json-merge` is a new sync mode: the template's keys are set in an existing file, objects merge, arrays are unioned, and all other keys are kept. A missing file is created; a file that is not a JSON object is a `CONFLICT`. It is idempotent and `--check` reports drift when a managed key is missing or different.
+- New line in the synced `agents-core` block: "No AI attribution in commits, PR bodies or comments." Synced repos get a one-time `UPDATE` of the block.
+- Limit: these settings cover commits and pull request descriptions made by Claude Code. The docs do not say they cover comments or reviews posted through GitHub integrations or MCP tools, so a footer on such a comment may still appear.
+- Tests in `test/ai-attribution-settings.test.mjs`.
+
 ## 1.6.0 (2026-11-02)
 - Rule change (CI-4): the synced `claude-review` workflow now fails loudly when it cannot read the full PR diff. Origin: a PR whose combined diff was over GitHub's 20,000-line limit made `gh pr diff` return HTTP 406, yet the review job concluded success with a summary saying it only covered "what I could read".
 - Large diffs: when `gh pr diff` fails for any reason, the reviewer falls back to `gh api repos/<repo>/pulls/<n>/files --paginate` (GET only) and reviews file by file from each file's `patch`. A file without a patch (binary or too large; a pure rename with nothing to read is the one exception), any failed call, or a file count that differs from `changedFiles` makes the review incomplete. That `gh api` path is added to `--allowedTools`, scoped to this PR; "GET only" is a prompt rule because the allowedTools syntax matches by prefix.
