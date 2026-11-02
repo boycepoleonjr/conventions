@@ -34,4 +34,4 @@ jobs:
           printf '\nClaude-only note.\n' >> "$repo/CLAUDE.md"
           node scripts/sync.mjs --repo "$repo" --check
           cd "$repo"
-          npx --yes prettier@3 --no-config --check AGENTS.md CLAUDE.md docs/specs/README.md docs/handoffs/README.md .github/pull_request_template.md .github/dependabot.yml .github/workflows/*.yml .claude/skills/*/SKILL.md
+          npx --yes prettier@3 --no-config --check AGENTS.md CLAUDE.md docs/specs/README.md docs/handoffs/README.md .github/pull_request_template.md .github/dependabot.yml .github/workflows/*.yml .claude/settings.json .claude/skills/*/SKILL.md

@@ -28,6 +28,7 @@ node /tmp/conventions/scripts/sync.mjs --repo . --check  # report drift, exit 1 
 - **block** files (for example `AGENTS.md`) only change between `<!-- conventions:begin <id> -->` and `<!-- conventions:end <id> -->` markers. Everything outside the markers belongs to the repo.
 - **replace** files are fully managed. If a managed file was edited by hand since the last sync, sync reports `CONFLICT` and leaves it alone unless you pass `--force`.
 - **seed** files are created once and never updated.
+- **json-merge** files (`.claude/settings.json`) are merged key by key: the managed keys are set, objects merge, arrays are unioned, and every other key in the file is kept. A file that is not a JSON object is a `CONFLICT`. Sync rewrites the file with 2-space JSON only when a managed key is missing or different, so run your formatter afterwards if it reflows arrays.
 
 Each repo records its settings in `.conventions.json` and the last applied version and hashes in `.conventions.lock.json`. Opt out of a file by adding its id to `"skip"`.
 
