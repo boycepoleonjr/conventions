@@ -316,7 +316,7 @@ test("claude-review workflow: claude_review.focus is indented into the prompt bl
   assert.equal(sync(repo).code, 0);
   const y = readF(repo, WF);
   const pad = " ".repeat(12);
-  assert.ok(y.includes(`5. Always finish`), "prompt step 4 present");
+  assert.ok(y.includes(`6. Always finish`), "prompt summary step present");
   assert.match(y, new RegExp(`\\n\\n${pad}Repo-specific focus:\\n${pad}Check RLS on new tables\\.\\n\\n${pad}No raw SQL in routes: use the query builder\\.\\n {10}claude_args: \\|`));
   for (const e of GH_EXPRS) assert.ok(y.includes(e), `lost ${e}`);
   // every prompt line is blank or indented at least 12 spaces
