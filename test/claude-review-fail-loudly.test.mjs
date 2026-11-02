@@ -37,6 +37,7 @@ test("large diffs: a failing gh pr diff falls back to the paginated file list, a
   assert.match(rendered, /review file by file, using each file's `patch`/);
   assert.match(rendered, /a file has no `patch`/);
   assert.match(rendered, /any `gh` call failed/);
+  assert.match(rendered, /any `gh` call failed and was not recovered \(the one failed `gh pr diff` that you replaced with the file-list fallback does not count, but a failure of the fallback itself does\)/);
   assert.match(rendered, /--json changedFiles/);
   assert.match(rendered, /at most 3000 files/);
 });
@@ -125,7 +126,7 @@ test("verify fails when no comment names the head SHA (missing or only a stale S
   for (const pages of [[[]], [], [[bot(summary(`review-status: complete ${OLD_SHA}`, OLD_SHA), "2026-11-01T10:00:00Z")]]]) {
     const r = runVerify(pages);
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /::error::No Claude review summary comment names head commit/);
+    assert.match(r.out, /::error::No Claude review summary with a review-status line names head commit/);
   }
 });
 
@@ -159,7 +160,7 @@ test("verify uses the newest summary that names the SHA, across pages", () => {
 test("verify ignores human comments, so a typed status line cannot satisfy the check", () => {
   const r = runVerify([[human(summary(`review-status: complete ${SHA}`), "2026-11-01T10:00:00Z")]]);
   assert.equal(r.code, 1);
-  assert.match(r.out, /No Claude review summary comment/);
+  assert.match(r.out, /No Claude review summary with a review-status line/);
   const mixed = runVerify([[bot(summary(`review-status: incomplete ${SHA} x`), "2026-11-01T10:00:00Z", 1), human(summary(`review-status: complete ${SHA}`), "2026-11-01T11:00:00Z")]]);
   assert.equal(mixed.code, 1, "a newer human comment does not override the bot summary");
 });
@@ -168,4 +169,15 @@ test("verify fails loudly when the comments cannot be fetched", () => {
   const r = runVerify([], { ghFails: true });
   assert.equal(r.code, 1);
   assert.match(r.out, /::error::Could not list the PR comments/);
+});
+
+test("verify ignores unrelated bot comments that name the SHA, before or after the summary", () => {
+  const complete = bot(summary(`review-status: complete ${SHA}`), "2026-11-01T10:00:00Z", 1);
+  const deploy = bot(`Preview ready for ${SHA}`, "2026-11-01T11:00:00Z", 5);
+  assert.equal(runVerify([[complete, deploy]]).code, 0, "a later deploy-bot comment must not hide a complete summary");
+  const incomplete = bot(summary(`review-status: incomplete ${SHA} fetch error`), "2026-11-01T10:00:00Z", 1);
+  assert.equal(runVerify([[incomplete, deploy]]).code, 1, "and must not hide an incomplete one");
+  const only = runVerify([[deploy]]);
+  assert.equal(only.code, 1, "a SHA mention with no status line is not a summary");
+  assert.match(only.out, /No Claude review summary with a review-status line/);
 });
