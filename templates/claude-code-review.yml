@@ -1,4 +1,5 @@
 # Synced from boycepoleonjr/conventions v{{conventions.version}} (CI-4). Edit there. Repo-specific review focus goes in "claude_review.focus" in .conventions.json; opt out by adding "claude-review" to "skip".
+# Action refs (uses: ...@<sha>) are repo-owned after the first sync and kept current by Dependabot (SUP-7).
 name: Claude Code Review
 
 on:
@@ -39,12 +40,13 @@ jobs:
             exit 1
           fi
 
-      # Held at checkout v4.4.0 on purpose: v6+ persists the token through includeIf.gitdir, which
-      # claude-code-action does not clear, so the token would stay usable during the Claude run.
+      # persist-credentials: false so no checkout token stays in git config (local, include or includeIf.gitdir)
+      # while Claude runs, on any checkout version. claude-code-action sets up git with its own token.
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Run Claude Code Review
         uses: anthropics/claude-code-action@d70510b174a1244958df0b03166a54912811f3e6 # v1.0.264

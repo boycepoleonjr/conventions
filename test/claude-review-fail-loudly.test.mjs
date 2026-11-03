@@ -57,8 +57,9 @@ test("allowedTools: the files endpoint is allowed, PR-scoped, and there is no bl
 });
 
 test("kept as before: pins, permissions, concurrency, skips", () => {
-  assert.match(rendered, /actions\/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4\.4\.0/);
-  assert.match(rendered, /claude-code-action@d70510b174a1244958df0b03166a54912811f3e6 # v1\.0\.264/);
+  // Seeds only (SUP-7): the form is fixed (SUP-1), the version is not.
+  assert.match(rendered, /uses: actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}with:\n {10}fetch-depth: 1\n {10}persist-credentials: false\n/);
+  assert.match(rendered, /uses: anthropics\/claude-code-action@[0-9a-f]{40} # v1\.\d+\.\d+\n/);
   assert.match(rendered, /^permissions: \{\}$/m);
   assert.match(rendered, /^ {4}permissions:\n {6}contents: read\n {6}pull-requests: read\n {6}issues: read\n {6}id-token: write\n/m);
   assert.match(rendered, /concurrency:\n {2}group: claude-review-\$\{\{ github\.event\.pull_request\.number \}\}\n {2}cancel-in-progress: true/);
