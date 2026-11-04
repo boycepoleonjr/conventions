@@ -109,15 +109,31 @@ jobs:
             echo "::error::Could not list the PR comments to verify the review. Re-run the job."
             exit 1
           fi
-          # Self-edit PR: Claude could not review it. Pass only on the repository owner's explicit waiver for this head SHA:
-          # an issue comment by author_association OWNER (a person, not a bot) with a line exactly "review-waiver: <HEAD_SHA>".
-          # A waiver for an older SHA, or from anyone else, does not count. A new push needs a new waiver.
+          # Self-edit PR: Claude could not review it. Pass only on an explicit waiver for this head SHA: a comment by a human
+          # (user.type User, never a bot) with a line exactly "review-waiver: <HEAD_SHA>", whose author is the repository owner
+          # (author_association OWNER) or has the admin permission on this repository. Org owners show up as MEMBER, so the
+          # permission lookup is what lets them waive. A waiver for an older SHA, or from anyone else, does not count.
+          # A new push needs a new waiver. If a permission lookup fails, fail loudly.
           if [ "${SELF_EDIT:-false}" = "true" ]; then
-            if ! printf '%s' "$raw" | jq -se --arg line "review-waiver: $HEAD_SHA" '[.[][]] | any(.author_association == "OWNER" and .user.type == "User" and (.body | gsub("\r"; "") | split("\n") | any(. == $line)))' > /dev/null; then
-              echo "::error::This PR edits .github/workflows/claude-code-review.yml, so Claude cannot review it (the action refuses to run when the workflow differs from the default branch). An independent review is required. After it, the repository owner must comment a line exactly 'review-waiver: $HEAD_SHA' on this PR. A waiver for an older commit, or from anyone but the owner, does not count."
+            if ! candidates=$(printf '%s' "$raw" | jq -sr --arg line "review-waiver: $HEAD_SHA" '[.[][]] | map(select(.user.type == "User" and (.body | gsub("\r"; "") | split("\n") | any(. == $line)))) | map("\(.user.login) \(.author_association)") | unique | .[]'); then
+              echo "::error::Could not parse the PR comments to look for a review-waiver."
               exit 1
             fi
-            echo "::warning::No Claude review ran: this PR edits the review workflow. The owner waived it for $HEAD_SHA."
+            waiver_by=""
+            while read -r login assoc; do
+              [[ "$login" =~ ^[A-Za-z0-9-]+$ ]] || continue
+              if [ "$assoc" = "OWNER" ]; then waiver_by="$login"; break; fi
+              if ! perm=$(gh api "repos/$REPO/collaborators/$login/permission" --jq .permission); then
+                echo "::error::Could not look up the permission of $login on $REPO to check their review-waiver. Re-run the job."
+                exit 1
+              fi
+              if [ "$perm" = "admin" ]; then waiver_by="$login"; break; fi
+            done <<< "$candidates"
+            if [ -z "$waiver_by" ]; then
+              echo "::error::This PR edits .github/workflows/claude-code-review.yml, so Claude cannot review it (the action refuses to run when the workflow differs from the default branch). An independent review is required. After it, a repository admin (the owner) must comment a line exactly 'review-waiver: $HEAD_SHA' on this PR. A waiver for an older commit, or from anyone without admin permission or any bot, does not count."
+              exit 1
+            fi
+            echo "::warning::No Claude review ran: this PR edits the review workflow. $waiver_by waived it for $HEAD_SHA."
             exit 0
           fi
           # Newest bot comment that names the head SHA and carries a review-status line, so unrelated bot comments

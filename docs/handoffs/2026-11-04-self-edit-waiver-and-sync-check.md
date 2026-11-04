@@ -4,7 +4,7 @@ Branch `feat/self-edit-waiver-and-sync-check`, PR into `main` (v1.7.0). Not rele
 
 ## What I changed
 
-- **`templates/claude-code-review.yml`.** New first step `Detect self-edit` (GET of the PR file list, fails loudly). `Run Claude Code Review` is skipped when the PR edits the workflow. `Verify the review was complete` takes a self-edit branch that passes only on an owner `review-waiver: <HEAD_SHA>` comment. Non-self-edit PRs run the 1.7.0 logic unchanged.
+- **`templates/claude-code-review.yml`.** New first step `Detect self-edit` (GET of the PR file list, fails loudly). `Run Claude Code Review` is skipped when the PR edits the workflow. `Verify the review was complete` takes a self-edit branch that passes only on a `review-waiver: <HEAD_SHA>` comment from a human who is the repo owner (OWNER) or has admin permission (looked up with a GET; a failed lookup fails the job). Non-self-edit PRs run the 1.7.0 logic unchanged.
 - **`templates/conventions-sync-check.yml`** (manifest id `sync-check`, STANDARD CI-6). PR and push-to-main. Clones the pinned tag and runs `sync.mjs --check`. Fails on `CONFLICT`, on a missing `summary:` line, on exit codes other than 0 or 1, and on clone failure. "N to write" is a notice.
 - **`pr.draft`** in `.conventions.json` (`scripts/sync.mjs`, `templates/AGENTS.md`, `skills/open-pr/SKILL.md`).
 - **Docs.** Spec, STANDARD (CI-4, CI-6, FLOW-2), CHANGELOG 1.7.1, README sections, `VERSION` 1.7.1.
@@ -23,12 +23,12 @@ Branch `feat/self-edit-waiver-and-sync-check`, PR into `main` (v1.7.0). Not rele
 ## What I could not verify
 
 - The workflows have not run on GitHub. I cannot trigger `claude-code-action` here, so the skip on self-edit PRs is checked by structure and by running the real verify script with a fake `gh`, not by a live run. The first real run is bitburner's sync PR.
-- `author_association` values are taken from GitHub's documented enum. I did not post a comment as the owner to see the live value.
+- `author_association` values and the `collaborators/<login>/permission` response (`permission`: admin, write, read, none) are taken from GitHub's documentation. I did not post a comment or call the endpoint on GitHub to see live values, and I did not confirm that the default job token can call it (the job asks for `contents`, `pull-requests`, `issues` read; the endpoint needs metadata only, which every token has). A failed lookup fails the job, so the risk is a red check, not a false pass.
 
 ## Open items
 
 - Release steps (tag `v1.7.1`, move `v1`), per the PR body.
 - Decide whether `Conventions sync check` becomes a required check downstream.
-- Waiver trade-off (agents running as the owner can post it; org repos report owners as MEMBER).
+- Waiver trade-off: agents running with an admin's token can post it, and an admin PR author can waive their own PR.
 - Version number: 1.7.1 as asked, but new files and rules are minor by the README.
 - Seed bumps (checkout, setup-node, claude-code-action) are still pending from the 1.7.0 handoff.
