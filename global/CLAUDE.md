@@ -6,6 +6,7 @@ Installed from https://github.com/boycepoleonjr/conventions. Project instruction
 - Find the repository root and read its `AGENTS.md`/`CLAUDE.md`, README, manifests and lockfiles, scripts and CI workflows. Use the repo's real commands and conventions.
 - Treat notes and remembered project details as hints. Verify the current branch, default branch, scripts and deploy setup in the repo.
 - Do not apply a preferred stack, framework or architecture across unrelated repos. Ask before broad migrations, new toolchains or major dependency upgrades.
+- Do not pin or cap dependency, runtime, action or tool versions to satisfy conventions or to avoid work; the repo's lockfile and Dependabot own versions. Pin or set a floor only for a documented major security issue, and declare it in the manifest.
 
 ## Verification
 - Verify by observing real behavior: exit codes, rendered output, response bytes, row counts. "Passes" means the tooling is green and the change was seen doing what it should.

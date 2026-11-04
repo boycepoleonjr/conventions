@@ -9,18 +9,21 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SETUP_NODE = "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0";
-const CHECKOUT = "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0";
+// SUP-1/SUP-7: the pin form is fixed (full commit SHA plus a version comment); the version is only a seed.
+const SETUP_NODE_RE = /uses: (actions\/setup-node@[0-9a-f]{40} # v\d+\.\d+\.\d+)\n/;
+const CHECKOUT_RE = /uses: actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}with:\n {10}persist-credentials: false\n/;
 // Every synced template that installs Node.
 const TEMPLATES = ["templates/conventions-check.yml", "templates/deploy-secrets-lint.yml"];
 
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
+// The seed the templates carry today, whatever its version.
+const SETUP_NODE = read(TEMPLATES[0]).match(SETUP_NODE_RE)[1];
 
-test("every template that sets up Node pins setup-node to v7.1.0 by full SHA", () => {
+test("every template that sets up Node pins setup-node by full SHA with a version comment, all to the same seed", () => {
   for (const rel of TEMPLATES) {
     const text = read(rel);
-    assert.ok(text.includes(`uses: ${SETUP_NODE}`), `${rel} should pin ${SETUP_NODE}`);
-    assert.ok(!text.includes("49933ea"), `${rel} still has the old v4.4.0 setup-node pin`);
+    assert.match(text, SETUP_NODE_RE, `${rel} should pin setup-node by a 40-character SHA with a "# vX.Y.Z" comment`);
+    assert.ok(text.includes(`uses: ${SETUP_NODE}`), `${rel} should carry the same setup-node seed as ${TEMPLATES[0]}`);
   }
 });
 
@@ -42,11 +45,11 @@ test("a template that sets up Node is listed here, so a new one cannot keep an o
   assert.deepEqual(withNode, [...TEMPLATES].sort());
 });
 
-test("checkout stays at v4.4.0 (SUP-6) next to the new setup-node pin", () => {
-  for (const rel of TEMPLATES) assert.ok(read(rel).includes(`uses: ${CHECKOUT}`), `${rel} should keep ${CHECKOUT}`);
+test("checkout is pinned by full SHA and sets persist-credentials: false (SUP-1, SUP-6)", () => {
+  for (const rel of TEMPLATES) assert.match(read(rel), CHECKOUT_RE, `${rel}: checkout needs a SHA pin and persist-credentials: false`);
 });
 
-test("a synced repo gets the new pin in conventions-check.yml and deploy-secrets-lint.yml", () => {
+test("a new synced repo gets the setup-node seed in conventions-check.yml and deploy-secrets-lint.yml", () => {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pin-"));
   fs.writeFileSync(path.join(repo, "package.json"), JSON.stringify({ name: "demo", scripts: { test: "jest" } }));
   fs.writeFileSync(path.join(repo, "package-lock.json"), "{}");
@@ -54,7 +57,7 @@ test("a synced repo gets the new pin in conventions-check.yml and deploy-secrets
   const init = run(["--init"]);
   assert.equal(init.status, 0, init.stdout + init.stderr);
   for (const f of [".github/workflows/conventions-check.yml", ".github/workflows/deploy-secrets-lint.yml"]) {
-    assert.ok(fs.readFileSync(path.join(repo, f), "utf8").includes(`uses: ${SETUP_NODE}`), `${f} should carry the new pin`);
+    assert.ok(fs.readFileSync(path.join(repo, f), "utf8").includes(`uses: ${SETUP_NODE}`), `${f} should carry the seed`);
   }
   assert.equal(run(["--check"]).status, 0);
 });
@@ -72,12 +75,13 @@ function syncedRepo() {
   return { repo, run, out: (r) => r.stdout + r.stderr };
 }
 
-test("a repo synced at the old pin and not edited gets an UPDATE, not a CONFLICT", () => {
+test("a repo whose file differs only in its setup-node ref is OK, never an UPDATE or CONFLICT, and keeps its ref (SUP-7)", () => {
   const { repo, run, out } = syncedRepo();
   const file = path.join(repo, REL);
   const current = fs.readFileSync(file, "utf8");
   assert.ok(current.includes(SETUP_NODE));
-  // What 1.6.2 wrote: the old pin, with its hash recorded in the lockfile.
+  assert.notEqual(SETUP_NODE, OLD_PIN, "fixture needs a seed that differs from the old pin");
+  // Same template, older setup-node ref, and a raw (pre-1.7.0) hash of that file in the lockfile.
   const old = current.replace(SETUP_NODE, OLD_PIN);
   fs.writeFileSync(file, old);
   const lockPath = path.join(repo, ".conventions.lock.json");
@@ -85,11 +89,11 @@ test("a repo synced at the old pin and not edited gets an UPDATE, not a CONFLICT
   lock.files[REL] = sha(old);
   fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + "\n");
   const res = run(["--check"]);
-  assert.notEqual(res.status, 0, "an outdated file is drift");
-  assert.match(out(res), /UPDATE\s+\.github\/workflows\/conventions-check\.yml/);
-  assert.doesNotMatch(out(res), /CONFLICT/);
-  assert.equal(run([]).status, 0);
-  assert.ok(fs.readFileSync(file, "utf8").includes(SETUP_NODE));
+  assert.match(out(res), /OK\s+\.github\/workflows\/conventions-check\.yml\n/);
+  assert.doesNotMatch(out(res), /CONFLICT|UPDATE\s+\.github\/workflows/);
+  assert.equal(run([]).status, 0, "only the lock entry is rewritten to the normalized hash");
+  assert.equal(fs.readFileSync(file, "utf8"), old, "sync neither upgrades nor downgrades the repo's ref");
+  assert.equal(run(["--check"]).status, 0);
 });
 
 test("a bumped pin with a stale header and no lock entry is a CONFLICT; making it equal to the template is adopted", () => {

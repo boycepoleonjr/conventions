@@ -12,6 +12,7 @@ Instructions for any coding agent (Claude Code, Cursor, Codex) and for people wo
 - PR description follows `.github/pull_request_template.md`: what, why, every command run with its real pass/fail, risk, and decisions needed.
 - Bug fixes add regression tests for every path of the fix (empty, invalid, valid input, and any guard you add), not just the reported repro. See `.claude/skills/fix-with-regression-tests`.
 - Dependency changes are declared openly in the manifest. Never hide a version change in `overrides` or `resolutions` while the manifest claims a different range. See `.claude/skills/dependency-update`.
+- Do not pin or cap versions to satisfy conventions or to avoid work; the lockfile and Dependabot own versions. Pin or set a floor only for a documented major security issue, and declare it in the manifest.
 - Non-trivial work gets a plan in `docs/specs/` first. End each session with a handoff in `docs/handoffs/YYYY-MM-DD-<topic>.md`.
 - No AI attribution in commits, PR bodies or comments.
 - Never commit secrets, real customer data or `.env` files. Use synthetic data in tests and fixtures.

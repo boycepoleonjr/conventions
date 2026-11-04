@@ -30,6 +30,21 @@ node /tmp/conventions/scripts/sync.mjs --repo . --check  # report drift, exit 1 
 - **seed** files are created once and never updated.
 - **json-merge** files (`.claude/settings.json`) are merged key by key: the managed keys are set, objects merge, arrays are unioned, and every other key in the file is kept. A file that is not a JSON object is a `CONFLICT`. Sync rewrites the file with 2-space JSON only when a managed key is missing or different, so run your formatter afterwards if it reflows arrays.
 
+## Versions belong to the repo
+
+Conventions never choose dependency, runtime, action or tool versions for a repo (STANDARD SUP-7). Each repo's lockfile and Dependabot choose them. The synced `dependabot.yml` has no `ignore` rule.
+
+In the three synced workflows (`claude-code-review.yml`, `conventions-check.yml`, `deploy-secrets-lint.yml`, marked `"refs": "repo"` in `manifest.json`), the version refs are repo-owned after the first write:
+
+- A new file gets the template's refs as seeds.
+- On later syncs, each `uses: owner/action@<sha> # <version>` keeps the repo's ref and version comment. Actions are matched by their `uses` path. The repo's `node-version` values are kept too. Everything else in the file is still managed.
+- An action that is new to the template gets the template's ref.
+- `--check`, the lock hashes and conflict detection ignore those refs. A Dependabot bump is never drift, never a `CONFLICT`, and never needs `--force`, and a sync never downgrades it.
+- The pin form is still required (SUP-1). A ref that is not a full 40-hex commit SHA (for example `@v4`) is not ignored: it shows up as drift with a `not a full commit SHA (SUP-1)` note, and the template seed replaces it on the next write.
+- Only plain `uses: owner/action@ref` lines are recognized. A quoted ref is treated as ordinary content.
+
+The only exception to SUP-7 is a major security issue: the exception names the advisory, sets a minimum safe version as a floor (not an exact pin), and says when it will be removed.
+
 Each repo records its settings in `.conventions.json` and the last applied version and hashes in `.conventions.lock.json`. Opt out of a file by adding its id to `"skip"`.
 
 ## Partial adoption
@@ -81,3 +96,10 @@ curl -fsSL https://raw.githubusercontent.com/boycepoleonjr/conventions/v1/script
 ## Versioning
 
 SemVer tags (`v1.0.0`), plus a moving major **branch** (`v1`, not a tag) that always points at the latest 1.x release. It is a branch because cloud sessions cannot push tags (403); the exact `vX.Y.Z` tags are pushed separately. Cloud environments and the drift check track `v1`; repos record the exact version they applied in `.conventions.lock.json`. Patch: wording fixes. Minor: new rules, files or profiles. Major: a change that needs manual work in repos (renamed markers, removed files). See `CHANGELOG.md`.
+
+## Release
+
+1. Bump `VERSION`, add a `CHANGELOG.md` entry, and run `node --test test/*.test.mjs` on Node 20 and 22.
+2. After the PR is approved and merged, push the `vX.Y.Z` tag and move the `v1` branch to it.
+
+The SHAs in the workflow templates are seeds for new files only. Changing a seed alone does not need a release, does not change the template's normalized hash, and causes no `UPDATE` in synced repos: those repos keep their own refs, and Dependabot keeps them current. Update a seed when it is convenient, in any release.

@@ -95,9 +95,6 @@ function loadProfile(name) {
   return p;
 }
 
-// actions/checkout stays at v4.4.0 (v6+ persists the token through includeIf.gitdir, which claude-code-action does not clear).
-const CHECKOUT_IGNORE = `    # Checkout is held at v4.4.0 on purpose (see the Claude workflows).\n    ignore:\n      - dependency-name: "actions/checkout"\n        update-types: ["version-update:semver-major"]\n`;
-
 // Optional `dependabot_target_branch` in .conventions.json: version-update PRs target that branch instead of the default branch.
 function dependabotTargetBranch(cfg) {
   const b = cfg.dependabot_target_branch;
@@ -114,7 +111,7 @@ function vars(cfg, version) {
   const ecos = cfg.dependabot || prof.dependabot;
   const targetBranch = dependabotTargetBranch(cfg);
   const dependabot_updates = ecos
-    .map((e) => `  - package-ecosystem: "${e}"\n    directory: "/"\n    schedule:\n      interval: "weekly"\n    open-pull-requests-limit: 5\n${targetBranch}${e === "github-actions" ? CHECKOUT_IGNORE : ""}    groups:\n      minor-and-patch:\n        applies-to: version-updates\n        update-types: ["minor", "patch"]\n      major:\n        applies-to: version-updates\n        update-types: ["major"]`)
+    .map((e) => `  - package-ecosystem: "${e}"\n    directory: "/"\n    schedule:\n      interval: "weekly"\n    open-pull-requests-limit: 5\n${targetBranch}    groups:\n      minor-and-patch:\n        applies-to: version-updates\n        update-types: ["minor", "patch"]\n      major:\n        applies-to: version-updates\n        update-types: ["major"]`)
     .join("\n");
   return { project: cfg.project || {}, commands, conventions: { version }, profile: cfg.profile, commands_list, dependabot_updates, claude_review_focus: reviewFocus(cfg) };
 }
@@ -139,6 +136,50 @@ function render(tpl, v) {
   return tpl
     .replace(/^(?<!\$)\{\{\s*([\w.]+)\s*\}\}\n/gm, (m, key) => (lookup(key) === "" ? "" : m))
     .replace(/(?<!\$)\{\{\s*([\w.]+)\s*\}\}/g, (m, key) => lookup(key));
+}
+
+// SUP-7: in files marked `"refs": "repo"` (the synced workflows), third-party version refs belong to the repo after the
+// first write. A `uses: owner/action@<40-hex sha> # <version>` ref and a `node-version:` value are kept from the repo's
+// copy, and drift, lock hashes and conflict detection ignore them, so a Dependabot bump is never drift or a CONFLICT.
+// The template's refs are only seeds for a new file or an action the repo does not have yet. A ref that is not a full
+// commit SHA (SUP-1) is never ignored or adopted: it shows up as drift and the seed is written instead.
+const USES_RE = /^([ \t]*(?:-[ \t]+)?uses:[ \t]*)([A-Za-z0-9_.-]+\/[A-Za-z0-9_.\/-]+)@([^\s#]+)([ \t]+#.*)?$/gm;
+const NODE_RE = /^([ \t]*node-version:[ \t]*)(.*)$/gm;
+export const isSha = (ref) => /^[0-9a-f]{40}$/.test(ref);
+
+// Every `uses:` ref in a file: [{ action, ref, comment }], in file order.
+export function usesRefs(text) {
+  return [...text.matchAll(USES_RE)].map((m) => ({ action: m[2], ref: m[3], comment: m[4] || "" }));
+}
+
+export function normalizeRefs(text) {
+  return text
+    .replace(USES_RE, (m, pre, action, ref, comment) => (isSha(ref) ? `${pre}${action}@<sha>` : m))
+    .replace(NODE_RE, (m, pre) => `${pre}<repo>`);
+}
+
+// The template text with the repo's SHA refs (and version comments) and node-version values put back in.
+// `from` is the repo's copy; `notes` collects refs that could not be adopted.
+export function adoptRefs(desired, from, notes = []) {
+  const have = new Map();
+  for (const u of usesRefs(from)) {
+    if (!isSha(u.ref)) { notes.push(`${u.action}@${u.ref} is not a full commit SHA (SUP-1), template seed used`); continue; }
+    if (!have.has(u.action)) have.set(u.action, []);
+    have.get(u.action).push(u);
+  }
+  const seen = new Map();
+  const nodes = [...from.matchAll(NODE_RE)].map((m) => m[2]);
+  let n = 0;
+  return desired
+    .replace(USES_RE, (m, pre, action) => {
+      const list = have.get(action);
+      if (!list) return m;
+      const i = seen.get(action) || 0;
+      seen.set(action, i + 1);
+      const u = list[Math.min(i, list.length - 1)];
+      return `${pre}${action}@${u.ref}${u.comment}`;
+    })
+    .replace(NODE_RE, (m, pre) => (n < nodes.length ? `${pre}${nodes[n++]}` : m));
 }
 
 function blocksOf(text) {
@@ -236,13 +277,21 @@ export function plan(repo, opts = {}) {
       continue;
     }
     if (f.mode === "replace") {
-      const want = sha(desired);
+      const repoRefs = f.refs === "repo";
+      const norm = repoRefs ? normalizeRefs : (t) => t;
+      const want = sha(norm(desired));
       if (current === null) { actions.push({ status: "CREATE", dest: f.dest, content: desired }); newLock.files[f.dest] = want; continue; }
-      const have = sha(current);
+      const have = sha(norm(current));
       if (have === want) { actions.push({ status: "OK", dest: f.dest }); newLock.files[f.dest] = want; continue; }
-      if (prevHash && have === prevHash) { actions.push({ status: "UPDATE", dest: f.dest, content: desired }); newLock.files[f.dest] = want; continue; }
-      if (opts.force) { actions.push({ status: "UPDATE", dest: f.dest, content: desired, note: "forced" }); newLock.files[f.dest] = want; continue; }
-      actions.push({ status: "CONFLICT", dest: f.dest, note: prevHash ? "edited by hand since last sync" : "file exists and is not managed yet; merge by hand, add to skip, or --force" });
+      const refNotes = [];
+      const content = repoRefs ? adoptRefs(desired, current, refNotes) : desired;
+      const note = (base) => [base, ...refNotes].filter(Boolean).join("; ") || undefined;
+      // Unedited since the last sync. Locks written before refs were repo-owned hold the raw hash, possibly of a file
+      // whose refs Dependabot has bumped since: compare the file with its refs reset to the template seeds as well.
+      const unedited = prevHash && (have === prevHash || (repoRefs && (sha(current) === prevHash || sha(adoptRefs(current, desired)) === prevHash)));
+      if (unedited) { actions.push({ status: "UPDATE", dest: f.dest, content, note: note(repoRefs ? "repo action refs kept" : "") }); newLock.files[f.dest] = want; continue; }
+      if (opts.force) { actions.push({ status: "UPDATE", dest: f.dest, content, note: note(repoRefs ? "forced, repo action refs kept" : "forced") }); newLock.files[f.dest] = want; continue; }
+      actions.push({ status: "CONFLICT", dest: f.dest, note: note(prevHash ? "edited by hand since last sync" : "file exists and is not managed yet; merge by hand, add to skip, or --force") });
       if (prevHash) newLock.files[f.dest] = prevHash;
       continue;
     }
