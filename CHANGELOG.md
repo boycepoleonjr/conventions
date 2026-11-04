@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.3 (2026-11-03)
+- Bump `actions/setup-node` in the synced `conventions-check.yml` and `deploy-secrets-lint.yml` from v4.4.0 (`49933ea5288caeca8642d1e84afbd3f7d6820020`) to v7.1.0, still pinned by full commit SHA `949feb2413d6458794dcd2491c4babbbce0c15c1` (SUP-1). I checked that the `v7.1.0` tag resolves to that commit. `actions/checkout` stays at v4.4.0 (SUP-6). Nothing else in either workflow changed.
+- Why: Dependabot proposes this bump in synced repos. Once it is merged there, the synced file no longer matches the template and `sync.mjs` reports a `CONFLICT` ("edited by hand since last sync") on every run, which pushes those repos to skip `conventions-check` or to force-overwrite the bump.
+- Synced repos get a one-time `UPDATE` of both files on the next sync. A repo that already merged the same setup-node bump and added `conventions-check` to `skip` can drop the skip: change only the header comment to `# Synced from boycepoleonjr/conventions v1.6.3.` so the file equals the template, and the sync adopts it without `--force` (it is reported as `OK`).
+- Tests in `test/setup-node-pin.test.mjs`: both templates pin the new SHA, no template pins `setup-node` by tag or short ref, a new template that installs Node must be listed in the test, checkout is unchanged, and the two sync paths above (an unedited repo at the old pin gets an `UPDATE`; a bumped file with a stale header is a `CONFLICT` until it equals the template, then it is adopted).
+
 ## 1.6.2 (2026-11-02)
 - Bump `anthropics/claude-code-action` in the synced `claude-code-review.yml` from v1.0.253 (`5eb090f3c3afd701a0672cd32981197ca27688f6`) to v1.0.264, still pinned by full commit SHA `d70510b174a1244958df0b03166a54912811f3e6` (SUP-1). I checked that the `v1.0.264` tag resolves to that commit. This is the commit Dependabot proposed in boycepoleonjr/durable-agent#11. `actions/checkout` stays at v4.4.0. Nothing else in the workflow changed.
 - Synced repos get a one-time `UPDATE` of `.github/workflows/claude-code-review.yml` on the next sync. This could not go into v1.6.0 because v1.6.0 and v1.6.1 were already published.
