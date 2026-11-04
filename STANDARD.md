@@ -28,12 +28,13 @@ Each item has a stable ID so audits and PRs can reference it. "Synced" means `sy
 - **CI-5** Weekly conventions drift check. *(synced)*
 
 ## SUP: supply chain and permissions
-- **SUP-1** Third-party actions pinned to a full commit SHA.
+- **SUP-1** Third-party actions pinned to a full commit SHA with a version comment (`uses: owner/action@<40-hex sha> # vX.Y.Z`). The pin form is required. Each repo chooses which version (SUP-7), and Dependabot keeps it current. In synced workflows the refs are repo-owned after the first sync: sync keeps them, and drift checks ignore them. A ref that is not a full SHA is drift.
 - **SUP-2** Dependabot weekly for github-actions and the package ecosystem. *(synced)*
 - **SUP-3** Workflow `permissions:` least privilege, default `contents: read`.
 - **SUP-4** Dependency changes are declared openly in the manifest. Never hide a version change inside `overrides`/`resolutions` while the manifest claims a different range; if an override is unavoidable, explain it in the PR. *(skill: dependency-update)*
-- **SUP-5** Dependabot opens one grouped minor/patch PR and one grouped major PR per ecosystem weekly. Security updates arrive separately. Never merge the grouped major PR blindly: split it and do each major deliberately with the dependency-update skill. The one exception is `actions/checkout`, whose majors are ignored (held at v4.4.0, see CHANGELOG 1.4.0). *(synced)*
-- **SUP-6** `actions/checkout` is held at v4.4.0 by SHA and Dependabot ignores its majors (v6+ persists the token through `includeIf.gitdir`, which `claude-code-action` does not clear). The risk: a security fix shipped only in a newer checkout major gets no Dependabot PR. Once a quarter, check the checkout releases and security advisories by hand and decide whether the pin can move. *(ignore rule synced)*
+- **SUP-5** Dependabot opens one grouped minor/patch PR and one grouped major PR per ecosystem weekly. Security updates arrive separately. No ecosystem has an `ignore` rule, so Dependabot proposes every version. Never merge the grouped major PR blindly: split it and do each major deliberately with the dependency-update skill. *(synced)*
+- **SUP-6** `actions/checkout` steps set `persist-credentials: false` unless the job itself must push with the checkout token. No checkout token then stays in git config while later steps run, whatever the checkout version, so no version hold is needed (this replaces the v4.4.0 hold from 1.4.0). Actions that need git auth set up their own, as `claude-code-action` does. *(synced workflows)*
+- **SUP-7** Conventions never impose dependency, runtime, action or tool versions. Version choice belongs to each repo's lockfile and Dependabot. The only exception is a major security issue (a published advisory or CVE with real exposure for us): the exception must name the advisory, state the minimum safe version as a floor (not an exact pin), and carry a removal condition. Compatibility problems and preferences are not exceptions. SHAs in synced templates are seeds for new files only. *(sync keeps repo refs)*
 
 ## DEP: deploy
 - **DEP-1** Auto-deploy on merge to the production branch.

@@ -182,7 +182,7 @@ test("upgrade from 1.0.0: agents-review is inserted after agents-core, repo text
   assert.equal(sync(repo, ["--check"]).code, 0);
 });
 
-test("dependabot: every ecosystem has version-update groups for minor/patch and major; only github-actions ignores checkout majors", () => {
+test("dependabot: every ecosystem has version-update groups for minor/patch and major and no ignore rule (SUP-7)", () => {
   const repo = nodeRepo();
   assert.equal(sync(repo, ["--init"]).code, 0);
   const y = readF(repo, ".github/dependabot.yml");
@@ -191,12 +191,8 @@ test("dependabot: every ecosystem has version-update groups for minor/patch and 
   assert.equal(entries.length, 2);
   for (const e of entries) {
     assert.match(e, /\n    groups:\n      minor-and-patch:\n        applies-to: version-updates\n        update-types: \["minor", "patch"\]\n      major:\n        applies-to: version-updates\n        update-types: \["major"\]/);
-    if (e.startsWith(': "github-actions"')) {
-      assert.match(e, /\n    ignore:\n      - dependency-name: "actions\/checkout"\n        update-types: \["version-update:semver-major"\]\n    groups:/);
-      assert.equal(e.match(/dependency-name/g).length, 1, "only actions/checkout is ignored");
-    } else {
-      assert.ok(!e.includes("ignore"), "majors must not be ignored (would block security updates)");
-    }
+    assert.ok(!e.includes("ignore"), "no ignore rule: conventions never hold a version back (SUP-7)");
+    assert.ok(!e.includes("dependency-name"), "no per-dependency rule");
   }
   assert.ok(!y.includes("\t"), "no tabs in YAML");
 });
@@ -213,7 +209,7 @@ test("dependabot: target-branch is absent by default and, when configured, set o
   assert.equal(y.match(/\n    target-branch: "staging"\n/g).length, 2);
   const entries = y.split("\n  - package-ecosystem").slice(1);
   for (const e of entries) assert.match(e, /open-pull-requests-limit: 5\n    target-branch: "staging"\n/);
-  assert.match(y, /ignore:\n      - dependency-name: "actions\/checkout"/);
+  assert.ok(!y.includes("ignore"), "no ignore rule with target-branch either");
   assert.equal(sync(repo, ["--check"]).code, 0);
   cfg.dependabot_target_branch = "";
   write(repo, ".conventions.json", JSON.stringify(cfg));
