@@ -13,7 +13,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SETUP_NODE_RE = /uses: (actions\/setup-node@[0-9a-f]{40} # v\d+\.\d+\.\d+)\n/;
 const CHECKOUT_RE = /uses: actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}with:\n {10}persist-credentials: false\n/;
 // Every synced template that installs Node.
-const TEMPLATES = ["templates/conventions-check.yml", "templates/deploy-secrets-lint.yml"];
+const TEMPLATES = ["templates/conventions-check.yml", "templates/deploy-secrets-lint.yml", "templates/conventions-sync-check.yml"];
 
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 // The seed the templates carry today, whatever its version.
