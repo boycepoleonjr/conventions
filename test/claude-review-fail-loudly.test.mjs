@@ -273,6 +273,32 @@ test("self-edit detection: the PR file list names the workflow (also as the old 
   assert.match(renamed.output, /^self_edit=true$/m, "renaming the workflow away also changes it");
 });
 
+// Codex review of PR 18: `printf "$files" | grep -q` exits on the first match, the producer then dies of SIGPIPE, and under
+// `set -o pipefail` the condition fails (status 141), so a big PR that lists the workflow early was read as "not a self-edit".
+test("self-edit detection: a big file list (about 2,500 names) is read in full, wherever the workflow sits in it", () => {
+  const many = (n, at, wf) => Array.from({ length: n }, (_, i) => file(`src/some/deeply/nested/directory/structure/file-number-${i}.ts`)).flatMap((f, i) => (i === at && wf ? [file(WF_PATH), f] : [f]));
+  for (const [name, pages, expected] of [
+    ["first", [many(100, 0, true), many(2400, -1, false)], true],
+    ["first, one page", [[file(WF_PATH), ...many(2500, -1, false)]], true],
+    ["middle", [many(2500, 1200, true)], true],
+    ["last", [[...many(2500, -1, false), file(WF_PATH)]], true],
+    ["absent", [many(2500, -1, false)], false],
+  ]) {
+    for (let run = 0; run < 3; run++) {
+      const r = runDetect(pages);
+      assert.equal(r.code, 0, `${name}: ${r.out}`);
+      assert.match(r.output, new RegExp(`^self_edit=${expected}$`, "m"), `${name} (run ${run})`);
+    }
+  }
+});
+
+test("no step in the workflow templates pipes into a grep that quits at the first match (SIGPIPE under pipefail)", () => {
+  for (const f of ["templates/claude-code-review.yml", "templates/conventions-sync-check.yml"]) {
+    const text = fs.readFileSync(path.join(ROOT, f), "utf8");
+    assert.doesNotMatch(text.replace(/^\s*#.*$/gm, ""), /\|\s*grep\b[^\n|]*\s-[A-Za-z]*[qm]/, `${f}: a pipe into grep -q/-m can fail the pipeline with status 141`);
+  }
+});
+
 test("self-edit detection: other files, look-alike paths and an empty list -> false", () => {
   for (const pages of [
     [[file("src/index.ts"), file(".github/workflows/ci.yml")]],
