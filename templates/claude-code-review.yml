@@ -44,7 +44,8 @@ jobs:
             echo "::error::Could not list the files of this PR to check whether it edits the review workflow. Re-run the job."
             exit 1
           fi
-          if printf '%s\n' "$files" | grep -Fxq '.github/workflows/claude-code-review.yml'; then
+          # A here-string and no -q: grep reads the whole list, so no producer can die of SIGPIPE under pipefail on a big PR.
+          if grep -Fx '.github/workflows/claude-code-review.yml' <<< "$files" > /dev/null; then
             echo "self_edit=true" >> "$GITHUB_OUTPUT"
             echo "This PR edits .github/workflows/claude-code-review.yml. Claude cannot review it; the check needs an owner review-waiver."
           else
