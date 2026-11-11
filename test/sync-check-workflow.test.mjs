@@ -109,7 +109,7 @@ test("template: SHA pins with version comments, persist-credentials false, read-
   assert.ok(!/^ {4}permissions:/m.test(TEMPLATE), "no job-level widening");
   assert.match(TEMPLATE, /^on:\n {2}pull_request:\n {2}push:\n {4}branches: \[main\]\n/m);
   assert.ok(!/pull_request_target|secrets\.|workflow_run|id-token|:\s*write\b/.test(TEMPLATE.replace(/^#.*$/gm, "")), "no secrets, no write scopes, no privileged triggers");
-  assert.match(TEMPLATE, /^ {2}sync-check:\n {4}runs-on: ubuntu-latest\n/m);
+  assert.match(TEMPLATE, /^ {2}sync-check:\n(?: {4}#.*\n)* {4}name: Conventions sync check\n {4}runs-on: ubuntu-latest\n/m, "the job name is the required-check context");
 });
 
 test("template: clones the tag pinned in .conventions.lock.json, the same way deploy-secrets-lint does", () => {
@@ -244,7 +244,7 @@ test("a ref changed to something that is not a full commit SHA breaks SUP-1, so 
 // ---- failures that must be loud --------------------------------------------------------------------------------------
 
 test("fake sync output: CONFLICT fails, UPDATE-only passes with a notice, clean passes", () => {
-  const conflict = runCheck(nodeRepo(), fakeSync(["conventions v1.7.1 -> . [check]", "CONFLICT  AGENTS.md  (a managed block was edited by hand since last sync)", "UPDATE   .github/dependabot.yml", "summary: 1 to write, 1 conflicts"], 1));
+  const conflict = runCheck(nodeRepo(), fakeSync(["conventions v1.8.0 -> . [check]", "CONFLICT  AGENTS.md  (a managed block was edited by hand since last sync)", "UPDATE   .github/dependabot.yml", "summary: 1 to write, 1 conflicts"], 1));
   assert.equal(conflict.code, 1);
   assert.match(conflict.out, /::error::A managed file was edited by hand: AGENTS\.md/);
   const two = runCheck(nodeRepo(), fakeSync(["CONFLICT  A.md  (x)", "CONFLICT  B.md  (y)", "summary: 0 to write, 2 conflicts"], 1));

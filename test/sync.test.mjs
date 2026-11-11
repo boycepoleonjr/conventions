@@ -276,7 +276,7 @@ test("claude-review workflow: reviews every push, fails loudly without the secre
     assert.deepEqual(wf[true].pull_request.types, ["opened", "synchronize", "reopened", "ready_for_review"]);
     const job = wf.jobs["claude-review"];
     assert.equal(job["timeout-minutes"], 30);
-    // 1.7.1: "Detect self-edit" is the first step (it only reads the PR file list); the secret check follows it.
+    // 1.8.0: "Detect self-edit" is the first step (it only reads the PR file list); the secret check follows it.
     assert.equal(stepsOf(wf)[0].name, "Detect self-edit");
     const first = stepsOf(wf).find((st) => /CLAUDE_CODE_OAUTH_TOKEN/.test(st.name || ""));
     assert.ok(first, "secret check step exists");

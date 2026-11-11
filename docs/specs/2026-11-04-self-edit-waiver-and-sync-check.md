@@ -1,4 +1,4 @@
-# Self-edit waiver for the Claude review, and a PR-time sync check (v1.7.1)
+# Self-edit waiver for the Claude review, and a PR-time sync check (v1.8.0)
 
 ## Problem
 
@@ -50,15 +50,21 @@ Rule: never a green check on a review that did not happen. A self-edit PR passes
 - Detection uses the PR file list, not a diff of the workflow against `main`, because the file list is exactly what the action's validation compares and needs no checkout of two trees.
 - The sync check clones the pinned tag, not the latest one. A repo behind the latest release is already reported weekly by `conventions-check`; the PR-time check answers a different question, "did someone edit what the pinned release manages".
 - Only `main` is covered for `push`, like `deploy-secrets-lint.yml`. A repo with another default branch edits that line (the file's `on:` is managed, so it would be a conflict; such a repo should skip `sync-check` or ask for a setting). No such repo exists today.
-- Version number: Boyce asked for 1.7.1. By the README's rule (new files and rules are minor) this could be 1.8.0. Decision for Boyce.
+- Version number: the request said 1.7.1, but by the README's rule (new files and rules are minor) this is a minor release. Boyce approved **1.8.0**.
+
+## Decisions made by Boyce
+
+- Version 1.8.0 (minor), not 1.7.1.
+- `Conventions sync check` is a required check downstream; the README documents how a repo enables it. The job has an explicit `name: Conventions sync check` so the required-check context is stable and matches the docs.
+- Admin-only waiver accepted: a human who is the owner or has `admin` permission. No second-reviewer rule.
 
 ## Rollout
 
-1. Merge, then Aside tags `v1.7.1` and moves `v1`. No tag or release is created in this PR.
+1. Merge, then Aside tags `v1.8.0` and moves `v1`. No tag or release is created in this PR.
 2. Each repo's next sync gets: `UPDATE` of `claude-code-review.yml` and `AGENTS.md` (the block text is unchanged unless `pr.draft` is set), `CREATE` of `conventions-sync-check.yml`, and the `open-pr` skill.
 3. That first sync PR edits `claude-code-review.yml`, so it is a self-edit PR: it needs one `review-waiver: <HEAD_SHA>` from a repo admin after an independent review. Advice in the README: put the workflow-file update in its own tiny PR, so the rest of the sync gets a real Claude review.
 4. bitburner on `main` (locked at 1.6.2) shows `CONFLICT` on `conventions-check.yml` only, caused by the Dependabot setup-node bump. One `sync.mjs --force` in the sync PR fixes it and keeps the repo's refs. Afterwards the sync check is clean. bitburner can then set `pr.draft: false` and delete its hand-written "PR policy" section.
-5. Making `Conventions sync check` a required check in branch protection is a per-repo choice.
+5. `Conventions sync check` becomes a required check on the default branch in every repo that syncs it (Boyce's decision). Each repo enables it after its sync PR merges (README, "Make the check required"). A repo that skips `sync-check` must not require it.
 
 ## Rollback
 

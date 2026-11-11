@@ -11,6 +11,8 @@ permissions:
   contents: read
 jobs:
   sync-check:
+    # The job name is the check name a repo requires in branch protection (STANDARD CI-6, README). Keep it stable.
+    name: Conventions sync check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

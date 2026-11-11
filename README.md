@@ -83,7 +83,25 @@ The default is `true`, which keeps the draft-first rule. Only `true` and `false`
 
 ## Conventions sync check
 
-The synced `conventions-sync-check.yml` workflow (CI-6) runs on every PR and on pushes to `main`. It clones the conventions tag pinned in `.conventions.lock.json`, runs `sync.mjs --repo . --check`, and fails on any `CONFLICT`: a managed file edited by hand. Being behind the pinned release (files that would be updated) is a notice, and Dependabot bumps of action refs or `node-version` are never edits (SUP-7). If the clone fails, or `sync.mjs` does not finish, the job fails; it is never a pass. Opt out with `"sync-check"` in `skip`. Make the check required in branch protection if you want it to block merges.
+The synced `conventions-sync-check.yml` workflow (CI-6) runs on every PR and on pushes to `main`. It clones the conventions tag pinned in `.conventions.lock.json`, runs `sync.mjs --repo . --check`, and fails on any `CONFLICT`: a managed file edited by hand. Being behind the pinned release (files that would be updated) is a notice, and Dependabot bumps of action refs or `node-version` are never edits (SUP-7). If the clone fails, or `sync.mjs` does not finish, the job fails; it is never a pass. Opt out with `"sync-check"` in `skip`.
+
+### Make the check required
+
+The check is named `Conventions sync check` (the job name). Every repo that syncs it makes it a required check on the default branch (STANDARD SET-1), so a hand-edited managed file cannot merge. Being behind the pinned release only produces a notice, so requiring it does not block repos that are merely out of date.
+
+1. Merge the sync PR that adds `.github/workflows/conventions-sync-check.yml` first. GitHub only offers a check that has run in the repo, and a required check that never reports leaves every PR stuck on "Expected".
+2. Add the check to the default branch's protection:
+   - **Branch protection rule** (Settings, Branches, edit the rule for the default branch): turn on "Require status checks to pass before merging", search for `Conventions sync check` and select it, then save.
+   - **Ruleset** (Settings, Rules, Rulesets): in the ruleset for the default branch, turn on "Require status checks to pass" and add `Conventions sync check`.
+   - **From the command line**, for a classic rule that already exists (needs admin rights on the repo; replace `OWNER/REPO` and the branch):
+
+```bash
+echo '{"contexts":["Conventions sync check"]}' | gh api -X POST repos/OWNER/REPO/branches/main/protection/required_status_checks/contexts --input -
+```
+
+3. A repo that has `sync-check` in `skip` must not require the check, and must remove it from the required list if it was added.
+
+If the check goes red, its log names the managed file: revert the edit, change the template in this repo, or add that file's id to `skip`. Dependabot bumps of action refs and `node-version` never fail it.
 
 To resolve a failure, revert the hand edit, change the template in this repo instead, or skip the file id in `.conventions.json`.
 

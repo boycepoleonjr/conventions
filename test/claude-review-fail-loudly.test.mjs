@@ -202,7 +202,7 @@ test("verify ignores unrelated bot comments that name the SHA, before or after t
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
-// 1.7.1: a PR that edits this workflow cannot be reviewed by claude-code-action (it refuses to run when the PR's copy
+// 1.8.0: a PR that edits this workflow cannot be reviewed by claude-code-action (it refuses to run when the PR's copy
 // differs from the default branch). The check must still never be green for a review that did not happen: it passes
 // only on an explicit waiver from the repository owner for the current head SHA.
 // ---------------------------------------------------------------------------------------------------------------------
