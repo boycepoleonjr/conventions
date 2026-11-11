@@ -34,7 +34,7 @@ node /tmp/conventions/scripts/sync.mjs --repo . --check  # report drift, exit 1 
 
 Conventions never choose dependency, runtime, action or tool versions for a repo (STANDARD SUP-7). Each repo's lockfile and Dependabot choose them. The synced `dependabot.yml` has no `ignore` rule.
 
-In the three synced workflows (`claude-code-review.yml`, `conventions-check.yml`, `deploy-secrets-lint.yml`, marked `"refs": "repo"` in `manifest.json`), the version refs are repo-owned after the first write:
+In the four synced workflows (`claude-code-review.yml`, `conventions-check.yml`, `conventions-sync-check.yml`, `deploy-secrets-lint.yml`, marked `"refs": "repo"` in `manifest.json`), the version refs are repo-owned after the first write:
 
 - A new file gets the template's refs as seeds.
 - On later syncs, each `uses: owner/action@<sha> # <version>` keeps the repo's ref and version comment. Actions are matched by their `uses` path. The repo's `node-version` values are kept too. Everything else in the file is still managed.
@@ -72,6 +72,44 @@ The Claude review workflow (`claude-review`, CI-4) reads optional repo-specific 
 ```json
 { "claude_review": { "focus": "Check RLS policies on every new table.\nFlag any new public route without auth." } }
 ```
+
+A repo that wants PRs opened ready for review (so AI reviews run on every push) sets the PR policy instead of keeping a hand-written line outside the managed block:
+
+```json
+{ "pr": { "draft": false } }
+```
+
+The default is `true`, which keeps the draft-first rule. Only `true` and `false` are accepted.
+
+## Conventions sync check
+
+The synced `conventions-sync-check.yml` workflow (CI-6) runs on every PR and on pushes to `main`. It clones the conventions tag pinned in `.conventions.lock.json`, runs `sync.mjs --repo . --check`, and fails on any `CONFLICT`: a managed file edited by hand. Being behind the pinned release (files that would be updated) is a notice, and Dependabot bumps of action refs or `node-version` are never edits (SUP-7). If the clone fails, or `sync.mjs` does not finish, the job fails; it is never a pass. Opt out with `"sync-check"` in `skip`.
+
+### Make the check required
+
+The check is named `Conventions sync check` (the job name). Every repo that syncs it makes it a required check on the default branch (STANDARD SET-1), so a hand-edited managed file cannot merge. Being behind the pinned release only produces a notice, so requiring it does not block repos that are merely out of date.
+
+1. Merge the sync PR that adds `.github/workflows/conventions-sync-check.yml` first. GitHub only offers a check that has run in the repo, and a required check that never reports leaves every PR stuck on "Expected".
+2. Add the check to the default branch's protection:
+   - **Branch protection rule** (Settings, Branches, edit the rule for the default branch): turn on "Require status checks to pass before merging", search for `Conventions sync check` and select it, then save.
+   - **Ruleset** (Settings, Rules, Rulesets): in the ruleset for the default branch, turn on "Require status checks to pass" and add `Conventions sync check`.
+   - **From the command line**, for a classic rule that already exists (needs admin rights on the repo; replace `OWNER/REPO` and the branch):
+
+```bash
+echo '{"contexts":["Conventions sync check"]}' | gh api -X POST repos/OWNER/REPO/branches/main/protection/required_status_checks/contexts --input -
+```
+
+3. A repo that has `sync-check` in `skip` must not require the check, and must remove it from the required list if it was added.
+
+If the check goes red, its log names the managed file: revert the edit, change the template in this repo, or add that file's id to `skip`. Dependabot bumps of action refs and `node-version` never fail it.
+
+To resolve a failure, revert the hand edit, change the template in this repo instead, or skip the file id in `.conventions.json`.
+
+## PRs that edit the review workflow
+
+`claude-code-action` refuses to run when a PR changes `.github/workflows/claude-code-review.yml`, so Claude cannot review that PR. The synced workflow detects it from the PR file list, skips the action, and fails the check with an explanation unless a repository admin has commented a line exactly `review-waiver: <HEAD_SHA>` for the current head commit, after an independent review. The commenter must be a human user and either the repository owner (`author_association` OWNER, on a repo owned by a user account) or someone whose permission on the repo is `admin` (looked up with a GET of `repos/<repo>/collaborators/<login>/permission`; owners of an organization are MEMBER, so they pass through that lookup). If the lookup fails, the check fails. A waiver for an older commit, from a bot, or from anyone with less than admin permission (write, maintain, triage, read) does not count, so every push needs a new one. The first sync PR in a repo that changes `claude-code-review.yml` needs one waiver.
+
+In sync PRs, put the update to `claude-code-review.yml` in its own tiny PR. The rest of the sync then gets a real Claude review, and only the small workflow PR needs the waiver. For example: run `sync.mjs --repo . --only claude-review` for the tiny PR, get the waiver and merge it, then run a full `sync.mjs --repo .` on a fresh branch from `main` for everything else.
 
 ## Deploy secrets lint
 

@@ -276,8 +276,11 @@ test("claude-review workflow: reviews every push, fails loudly without the secre
     assert.deepEqual(wf[true].pull_request.types, ["opened", "synchronize", "reopened", "ready_for_review"]);
     const job = wf.jobs["claude-review"];
     assert.equal(job["timeout-minutes"], 30);
-    const first = stepsOf(wf)[0];
-    assert.match(first.name, /CLAUDE_CODE_OAUTH_TOKEN/);
+    // 1.8.0: "Detect self-edit" is the first step (it only reads the PR file list); the secret check follows it.
+    assert.equal(stepsOf(wf)[0].name, "Detect self-edit");
+    const first = stepsOf(wf).find((st) => /CLAUDE_CODE_OAUTH_TOKEN/.test(st.name || ""));
+    assert.ok(first, "secret check step exists");
+    assert.equal(stepsOf(wf).indexOf(first), 1, "secret check runs right after Detect self-edit");
     assert.equal(first.env.HAS_TOKEN, "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}");
     assert.match(first.run, /\[ "\$HAS_TOKEN" != "true" \]/);
     assert.match(first.run, /::error::CLAUDE_CODE_OAUTH_TOKEN is not set/);
@@ -452,4 +455,67 @@ test("block insertion keeps one blank line around the block (retrofit and missin
   const claude = readF(repo, "CLAUDE.md");
   assert.match(claude, /^Claude-only note\.\n\n<!-- conventions:begin claude-import -->\n\n@AGENTS\.md\n\n<!-- conventions:end claude-import -->\n\nMore notes\.\n$/);
   assert.equal(sync(repo, ["--check"]).code, 0);
+});
+
+const DRAFT_LINE = "- Open a draft PR after the first commit. Mark it ready for review only when every command below passes and CI is green; AI reviews trigger on ready. Never merge.";
+const READY_LINE = "- Open the PR non-draft (ready for review) so AI reviews run on every push.";
+function setPr(repo, pr) {
+  const cfg = JSON.parse(readF(repo, ".conventions.json"));
+  if (pr === undefined) delete cfg.pr; else cfg.pr = pr;
+  write(repo, ".conventions.json", JSON.stringify(cfg, null, 2) + "\n");
+}
+
+test("pr.draft: unset or true keeps the draft-first line exactly as before", () => {
+  const repo = nodeRepo();
+  assert.equal(sync(repo, ["--init"]).code, 0);
+  assert.ok(readF(repo, "AGENTS.md").includes(DRAFT_LINE + "\n"));
+  for (const pr of [{ draft: true }, {}, undefined]) {
+    setPr(repo, pr);
+    const r = sync(repo, ["--check"]);
+    assert.equal(r.code, 0, `pr=${JSON.stringify(pr)}: no drift\n${r.out}`);
+  }
+  assert.doesNotMatch(readF(ROOT, "templates/AGENTS.md"), /Open a draft PR/, "the line now comes from the setting");
+});
+
+test("pr.draft false: the agents-core block says to open the PR non-draft, and the draft-first line is gone", () => {
+  const repo = nodeRepo();
+  assert.equal(sync(repo, ["--init"]).code, 0);
+  setPr(repo, { draft: false });
+  const check = sync(repo, ["--check"]);
+  assert.equal(check.code, 1, "the setting changes the managed block");
+  assert.match(check.out, /UPDATE\s+AGENTS\.md/);
+  assert.doesNotMatch(check.out, /CONFLICT/);
+  assert.equal(sync(repo).code, 0);
+  const agents = readF(repo, "AGENTS.md");
+  assert.ok(agents.includes(READY_LINE), agents);
+  assert.ok(agents.includes("Open the PR non-draft (ready for review) so AI reviews run on every push. Run every command below and keep CI green before each push. Never merge.\n"));
+  assert.ok(!agents.includes("Open a draft PR"), "draft-first line removed");
+  assert.equal(agents.match(/^- Open /gm).length, 1, "exactly one PR-opening rule");
+  assert.equal(sync(repo, ["--check"]).code, 0, "stable after the sync");
+  // back to the default restores the line
+  setPr(repo, { draft: true });
+  assert.equal(sync(repo).code, 0);
+  assert.ok(readF(repo, "AGENTS.md").includes(DRAFT_LINE + "\n"));
+});
+
+test("pr.draft false: a hand-written PR policy line outside the managed block is left alone", () => {
+  const repo = nodeRepo();
+  assert.equal(sync(repo, ["--init"]).code, 0);
+  write(repo, "AGENTS.md", readF(repo, "AGENTS.md") + "\n## Repo rules\n\nPR policy: open ready, never draft.\n");
+  setPr(repo, { draft: false });
+  assert.equal(sync(repo).code, 0);
+  assert.match(readF(repo, "AGENTS.md"), /\nPR policy: open ready, never draft\.\n/);
+});
+
+test("pr.draft: anything but true or false is a usage error (exit 3) and writes nothing", () => {
+  for (const pr of [{ draft: "false" }, { draft: 0 }, { draft: null }, { draft: "no" }]) {
+    const repo = nodeRepo();
+    assert.equal(sync(repo, ["--init"]).code, 0);
+    setPr(repo, pr);
+    const before = readF(repo, "AGENTS.md");
+    const r = sync(repo);
+    assert.equal(r.code, 3, `${JSON.stringify(pr)}\n${r.out}`);
+    assert.match(r.out, /pr\.draft must be true or false/);
+    assert.equal(readF(repo, "AGENTS.md"), before);
+  }
 });

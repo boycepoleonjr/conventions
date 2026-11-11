@@ -56,8 +56,8 @@ function bumpAll(repo) {
 }
 const refsByAction = (text) => Object.fromEntries(usesRefs(text).map((u) => [u.action, `${u.ref}${u.comment}`]));
 
-test("manifest: exactly the three synced workflows have repo-owned refs", () => {
-  assert.deepEqual(WORKFLOWS.map((f) => f.id).sort(), ["claude-review", "conventions-check", "deploy-secrets-lint"]);
+test("manifest: exactly the four synced workflows have repo-owned refs", () => {
+  assert.deepEqual(WORKFLOWS.map((f) => f.id).sort(), ["claude-review", "conventions-check", "deploy-secrets-lint", "sync-check"]);
   for (const f of MANIFEST.files.filter((x) => x.refs !== "repo")) assert.ok(!("refs" in f), `${f.id} must not set refs`);
 });
 
@@ -91,7 +91,7 @@ test("SUP-6: every actions/checkout step in the synced workflows sets persist-cr
       assert.ok(rest.some((x) => /^\s+persist-credentials: false$/.test(x)), `${f.src}: checkout step without persist-credentials: false`);
     });
   }
-  assert.equal(n, 3, "one checkout step per synced workflow");
+  assert.equal(n, 4, "one checkout step per synced workflow");
 });
 
 test("no version hold anywhere: no ignore rule, no hold or cap wording in templates, profiles, scripts or STANDARD", () => {

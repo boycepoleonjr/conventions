@@ -1,0 +1,50 @@
+# Synced from boycepoleonjr/conventions v{{conventions.version}} (CI-6).
+# Action refs (uses: ...@<sha>) and node-version are repo-owned after the first sync; Dependabot keeps the refs current (SUP-7).
+# Fails a PR (or a push to main) when a managed file was edited by hand (CONFLICT). Being behind the latest release is a notice, not a failure.
+# Opt out by adding "sync-check" to "skip" in .conventions.json.
+name: Conventions sync check
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  sync-check:
+    # The job name is the check name a repo requires in branch protection (STANDARD CI-6, README). Keep it stable.
+    name: Conventions sync check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Fetch pinned conventions
+        run: |
+          set -euo pipefail
+          REF=$(node -p "'v' + require('./.conventions.lock.json').version")
+          if ! git clone --depth 1 --branch "$REF" https://github.com/boycepoleonjr/conventions "$RUNNER_TEMP/conventions"; then
+            echo "::error::Could not clone conventions $REF. The sync check cannot run, so this is a failure, not a pass."
+            exit 1
+          fi
+      - name: Check managed files
+        run: |
+          set -uo pipefail
+          out="$RUNNER_TEMP/sync-check.out"
+          # --check exits 1 when anything would change, so the exit code is captured instead of letting `bash -e` stop here.
+          if node "$RUNNER_TEMP/conventions/scripts/sync.mjs" --repo . --check > "$out" 2>&1; then code=0; else code=$?; fi
+          cat "$out"
+          # A crash or a usage error also exits non-zero, so the summary line must be there for the result to count.
+          if { [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; } || ! grep -Eq '^summary: [0-9]+ to write, [0-9]+ conflicts$' "$out"; then
+            echo "::error::sync.mjs --check did not finish (exit $code). Treat the managed files as unchecked."
+            exit 1
+          fi
+          if grep -Eq '^CONFLICT ' "$out"; then
+            echo "::error::A managed file was edited by hand: $(grep -E '^CONFLICT ' "$out" | sed -E 's/^CONFLICT +//' | paste -sd ';' -). Revert the edit, or change it in boycepoleonjr/conventions, or add the file id to skip in .conventions.json."
+            exit 1
+          fi
+          if [ "$code" -eq 1 ]; then
+            echo "::notice::Managed files differ from the pinned conventions version, but none was edited by hand: $(grep -E '^summary:' "$out"). Run sync.mjs to update."
+          fi
