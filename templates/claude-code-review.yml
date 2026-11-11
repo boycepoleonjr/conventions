@@ -30,6 +30,27 @@ jobs:
       issues: read
       id-token: write
     steps:
+      # claude-code-action refuses to run when the PR's copy of this workflow differs from the default branch, so a PR that
+      # edits this file cannot be reviewed by it. Detect that first. If the file list cannot be read, fail loudly.
+      - name: Detect self-edit
+        id: self_edit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if ! files=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename, (.[].previous_filename // empty)'); then
+            echo "::error::Could not list the files of this PR to check whether it edits the review workflow. Re-run the job."
+            exit 1
+          fi
+          if printf '%s\n' "$files" | grep -Fxq '.github/workflows/claude-code-review.yml'; then
+            echo "self_edit=true" >> "$GITHUB_OUTPUT"
+            echo "This PR edits .github/workflows/claude-code-review.yml. Claude cannot review it; the check needs an owner review-waiver."
+          else
+            echo "self_edit=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # A missing secret must fail the check loudly, never skip the review silently.
       - name: Require CLAUDE_CODE_OAUTH_TOKEN
         env:
@@ -48,7 +69,9 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      # Skipped on self-edit PRs: the action cannot run there. The verify step below then needs an owner waiver.
       - name: Run Claude Code Review
+        if: steps.self_edit.outputs.self_edit != 'true'
         uses: anthropics/claude-code-action@d70510b174a1244958df0b03166a54912811f3e6 # v1.0.264
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -79,11 +102,23 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SELF_EDIT: ${{ steps.self_edit.outputs.self_edit }}
         run: |
           set -euo pipefail
           if ! raw=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate); then
             echo "::error::Could not list the PR comments to verify the review. Re-run the job."
             exit 1
+          fi
+          # Self-edit PR: Claude could not review it. Pass only on the repository owner's explicit waiver for this head SHA:
+          # an issue comment by author_association OWNER (a person, not a bot) with a line exactly "review-waiver: <HEAD_SHA>".
+          # A waiver for an older SHA, or from anyone else, does not count. A new push needs a new waiver.
+          if [ "${SELF_EDIT:-false}" = "true" ]; then
+            if ! printf '%s' "$raw" | jq -se --arg line "review-waiver: $HEAD_SHA" '[.[][]] | any(.author_association == "OWNER" and .user.type == "User" and (.body | gsub("\r"; "") | split("\n") | any(. == $line)))' > /dev/null; then
+              echo "::error::This PR edits .github/workflows/claude-code-review.yml, so Claude cannot review it (the action refuses to run when the workflow differs from the default branch). An independent review is required. After it, the repository owner must comment a line exactly 'review-waiver: $HEAD_SHA' on this PR. A waiver for an older commit, or from anyone but the owner, does not count."
+              exit 1
+            fi
+            echo "::warning::No Claude review ran: this PR edits the review workflow. The owner waived it for $HEAD_SHA."
+            exit 0
           fi
           # Newest bot comment that names the head SHA and carries a review-status line, so unrelated bot comments
           # (deploy previews, other reviewers) cannot hide the summary. Humans cannot satisfy the check by typing the line.

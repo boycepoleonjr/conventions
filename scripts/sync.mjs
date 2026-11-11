@@ -103,6 +103,16 @@ function dependabotTargetBranch(cfg) {
   return `    target-branch: "${b}"\n`;
 }
 
+// Optional `pr.draft` in .conventions.json (default true). false = open PRs ready for review so AI reviews run on every push.
+const PR_LINE_DRAFT = "- Open a draft PR after the first commit. Mark it ready for review only when every command below passes and CI is green; AI reviews trigger on ready. Never merge.";
+const PR_LINE_READY = "- Open the PR non-draft (ready for review) so AI reviews run on every push. Run every command below and keep CI green before each push. Never merge.";
+function prPolicyLine(cfg) {
+  const d = cfg.pr && cfg.pr.draft;
+  if (d === undefined || d === true) return PR_LINE_DRAFT;
+  if (d === false) return PR_LINE_READY;
+  throw new Error('pr.draft must be true or false (default true)');
+}
+
 function vars(cfg, version) {
   const prof = loadProfile(cfg.profile);
   const commands = { ...prof.commands, ...(cfg.commands || {}) };
@@ -113,7 +123,7 @@ function vars(cfg, version) {
   const dependabot_updates = ecos
     .map((e) => `  - package-ecosystem: "${e}"\n    directory: "/"\n    schedule:\n      interval: "weekly"\n    open-pull-requests-limit: 5\n${targetBranch}    groups:\n      minor-and-patch:\n        applies-to: version-updates\n        update-types: ["minor", "patch"]\n      major:\n        applies-to: version-updates\n        update-types: ["major"]`)
     .join("\n");
-  return { project: cfg.project || {}, commands, conventions: { version }, profile: cfg.profile, commands_list, dependabot_updates, claude_review_focus: reviewFocus(cfg) };
+  return { project: cfg.project || {}, commands, conventions: { version }, profile: cfg.profile, commands_list, dependabot_updates, claude_review_focus: reviewFocus(cfg), pr_policy_line: prPolicyLine(cfg) };
 }
 
 // Extra lines for the Claude review prompt, indented to sit inside the workflow's `prompt: |` block scalar.
