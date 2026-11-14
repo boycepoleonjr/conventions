@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.8.2 (2026-11-14)
+- Seeds refreshed (SUP-7: seeds only, nothing is imposed). The template refs are used only for brand-new files and for actions new to a template, so new repos start on current, safe versions:
+  - `actions/checkout`: v4.4.0 to v7.0.1 (`3d3c42e5aac5ba805825da76410c181273ba90b1`) in `claude-code-review.yml`, `conventions-check.yml`, `conventions-sync-check.yml` and `deploy-secrets-lint.yml`. Allowed now that every synced checkout step sets `persist-credentials: false` (a test enforces it in all four templates, including the review workflow). Checked against the v5, v6 and v7 notes and source: v5 moves the action to node24 (runner v2.327.1 or later; GitHub-hosted runners qualify); v6 stores persisted credentials in a separate file (we persist none); v7 blocks fork PR checkouts under `pull_request_target` and `workflow_run` (none of our workflows use those triggers).
+  - `actions/setup-node`: stays at v7.1.0 (`949feb2413d6458794dcd2491c4babbbce0c15c1`), the newest release.
+  - `anthropics/claude-code-action`: seed stays at v1.0.264 (`d70510b174a1244958df0b03166a54912811f3e6`). A newer release exists (v1.0.276); Boyce decided to hold the seed for now, so this release does not change it.
+  - This repo's own `.github/workflows/test.yml` moves to the same checkout and setup-node refs.
+- Runner floor documented in the README ("Versions belong to the repo"): the checkout and setup-node seeds need Actions runner v2.327.1 or later (node24).
+- Synced repos need no action. The synced workflows' refs are repo-owned, so the next sync keeps each repo's own refs and no `UPDATE` or `CONFLICT` is caused by this release. A seed-only bump does not require repos to sync: only new files, and actions new to a template, ever get the new refs. Dependabot keeps existing refs current.
+- STANDARD SUP-6 no longer mentions the old v4.4.0 hold. `test/repo-owned-refs.test.mjs`: the "seed bump" test no longer hardcodes the old seed (it compares the repo's refs before and after), and a new test requires one seed per action across the templates and `test.yml`.
+- No change to `sync.mjs`, the manifest or template content other than the `uses:` lines.
+
 ## 1.8.1 (2026-11-11)
 - Fix: self-edit detection in `claude-code-review.yml` read a big PR file list wrongly. The `Detect self-edit` step piped the file list into `grep -Fxq`. `grep -q` exits at the first match, so on a large PR that lists the workflow early (about 2,500 files in the reproduction, below the 3,000-file API limit) `printf` died of SIGPIPE, `set -o pipefail` made the condition fail (status 141), and the step wrote `self_edit=false`. The workflow then ran the action, which refuses to run on a PR that edits the workflow, so the PR stayed red and no `review-waiver` could clear it. It could not turn the check green falsely. Found by the Codex review of PR 18.
   - The step now matches against a here-string with a `grep` that reads all of its input: `grep -Fx '.github/workflows/claude-code-review.yml' <<< "$files" > /dev/null`.
