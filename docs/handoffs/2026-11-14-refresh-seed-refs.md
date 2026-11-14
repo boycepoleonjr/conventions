@@ -1,6 +1,6 @@
 # Handoff: refresh the template seed refs (v1.8.2)
 
-Branch `chore/refresh-seed-refs`, PR into `main` (v1.8.1). Not released or tagged; `v1` has not moved. Aside tags `v1.8.2` and moves `v1` after Boyce approves.
+Branch `chore/refresh-seed-refs-v1.8.2`, PR [boycepoleonjr/conventions#21](https://github.com/boycepoleonjr/conventions/pull/21) into `main` (v1.8.1). It supersedes boycepoleonjr/conventions#20 (closed, not merged), which carried the same change as two commits. Not released or tagged; `v1` has not moved. Aside tags `v1.8.2` and moves `v1` after Boyce approves.
 
 ## Boyce's decisions (applied)
 
