@@ -37,6 +37,7 @@ Conventions never choose dependency, runtime, action or tool versions for a repo
 In the four synced workflows (`claude-code-review.yml`, `conventions-check.yml`, `conventions-sync-check.yml`, `deploy-secrets-lint.yml`, marked `"refs": "repo"` in `manifest.json`), the version refs are repo-owned after the first write:
 
 - A new file gets the template's refs as seeds.
+- Runner floor: the current checkout and setup-node seeds run on the node24 runtime, which needs GitHub Actions runner v2.327.1 or later. GitHub-hosted runners qualify. A repo on an older self-hosted runner updates the runner, or sets an older ref in its own workflow; refs are repo-owned, so sync keeps it (SUP-7).
 - On later syncs, each `uses: owner/action@<sha> # <version>` keeps the repo's ref and version comment. Actions are matched by their `uses` path. The repo's `node-version` values are kept too. Everything else in the file is still managed.
 - An action that is new to the template gets the template's ref.
 - `--check`, the lock hashes and conflict detection ignore those refs. A Dependabot bump is never drift, never a `CONFLICT`, and never needs `--force`, and a sync never downgrades it.
