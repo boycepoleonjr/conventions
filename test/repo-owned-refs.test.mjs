@@ -280,14 +280,30 @@ test("adoptRefs and normalizeRefs: matched by action and occurrence, comments ca
   assert.equal(adoptRefs(tpl, ""), tpl, "nothing to adopt from an empty file");
 });
 
+test("seeds are consistent: each action has one seed (SHA and version comment) across the templates and this repo's own test workflow", () => {
+  const files = [...WORKFLOWS.map((f) => f.src), ".github/workflows/test.yml"];
+  const seen = {};
+  for (const f of files) {
+    for (const u of usesRefs(fs.readFileSync(path.join(ROOT, f), "utf8"))) {
+      assert.match(u.ref, /^[0-9a-f]{40}$/, `${f}: ${u.action} is a full commit SHA (SUP-1)`);
+      assert.match(u.comment, /# v\d+\.\d+\.\d+/, `${f}: ${u.action} has a version comment`);
+      (seen[u.action] ??= new Set()).add(`${u.ref}${u.comment}`);
+    }
+  }
+  for (const [action, set] of Object.entries(seen)) assert.equal(set.size, 1, `${action} has ${set.size} different seeds: ${[...set].join(" | ")}`);
+});
+
 test("a seed bump alone (same version) causes no UPDATE in a synced repo and only changes new files", () => {
   const repo = nodeRepo();
   assert.equal(sync(repo, ["--init"]).code, 0);
+  const before = Object.fromEntries(WORKFLOWS.map((f) => [f.dest, refsByAction(readF(repo, f.dest))]));
   const conv = copyConventions();
   for (const f of WORKFLOWS) write(conv, f.src, bump(readF(conv, f.src)));
   const check = sync(repo, ["--check"], conv);
   assert.equal(check.code, 0, check.out);
-  assert.match(readF(repo, CC), /actions\/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4\.4\.0/, "existing file keeps its refs");
+  // Whatever the current seeds are, a synced repo keeps exactly the refs it already had, in every workflow.
+  for (const f of WORKFLOWS) assert.deepEqual(refsByAction(readF(repo, f.dest)), before[f.dest], `${f.dest} keeps its refs`);
+  assert.ok(!/c{40}/.test(readF(repo, CC)), "the bumped seed did not reach the existing file");
   const fresh = nodeRepo();
   assert.equal(sync(fresh, ["--init"], conv).code, 0);
   assert.match(readF(fresh, CC), /actions\/checkout@c{40} # v7\.0\.1/, "a new file gets the new seed");
