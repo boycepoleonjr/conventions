@@ -144,7 +144,7 @@ test("skip: the sync-check id is the only opt-out, and a new repo gets the file"
   assert.match(r.out, /SKIP\s+\.github\/workflows\/conventions-sync-check\.yml\s+\("sync-check" in skip\)/);
   assert.ok(!fs.existsSync(path.join(skipRepo, DEST)), "skipped file is not written");
   const others = WORKFLOWS.filter((d) => d !== DEST);
-  assert.equal(others.length, 3);
+  assert.equal(others.length, 5);
   for (const d of others) assert.ok(fs.existsSync(path.join(skipRepo, d)), `skipping sync-check does not skip ${d}`);
   for (const other of ["conventions-check", "deploy-secrets-lint", "claude-review"]) {
     const r2 = nodeRepo();

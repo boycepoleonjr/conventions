@@ -9,6 +9,8 @@
     { "id": "conventions-check", "src": "templates/conventions-check.yml", "dest": ".github/workflows/conventions-check.yml", "mode": "replace", "refs": "repo" },
     { "id": "deploy-secrets-lint", "src": "templates/deploy-secrets-lint.yml", "dest": ".github/workflows/deploy-secrets-lint.yml", "mode": "replace", "refs": "repo" },
     { "id": "sync-check", "src": "templates/conventions-sync-check.yml", "dest": ".github/workflows/conventions-sync-check.yml", "mode": "replace", "refs": "repo" },
+    { "id": "ai-attribution-scrub", "src": "templates/ai-attribution-scrub.yml", "dest": ".github/workflows/ai-attribution-scrub.yml", "mode": "replace", "refs": "repo" },
+    { "id": "ai-attribution-check", "src": "templates/ai-attribution-check.yml", "dest": ".github/workflows/ai-attribution-check.yml", "mode": "replace", "refs": "repo" },
     { "id": "specs-readme", "src": "templates/specs-README.md", "dest": "docs/specs/README.md", "mode": "seed" },
     { "id": "handoffs-readme", "src": "templates/handoffs-README.md", "dest": "docs/handoffs/README.md", "mode": "seed" },
     { "id": "skill-open-pr", "src": "skills/open-pr/SKILL.md", "dest": ".claude/skills/open-pr/SKILL.md", "mode": "replace" },
