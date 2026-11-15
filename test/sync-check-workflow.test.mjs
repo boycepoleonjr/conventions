@@ -105,8 +105,8 @@ test("template: SHA pins with version comments, persist-credentials false, read-
   }
   assert.equal(TEMPLATE.split("\n").filter((l) => /^\s*(-\s+)?uses:/.test(l)).length, refs.length, "every uses: line is a recognized ref");
   assert.match(TEMPLATE, /uses: actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}with:\n {10}persist-credentials: false\n/);
-  assert.match(TEMPLATE, /^permissions:\n {2}contents: read\n(?!\s+\w)/m, "workflow permissions: contents read and nothing else");
-  assert.ok(!/^ {4}permissions:/m.test(TEMPLATE), "no job-level widening");
+  assert.match(TEMPLATE, /^permissions: \{\}\n/m, "deny by default at the workflow level");
+  assert.match(TEMPLATE, /^ {4}name: Conventions sync check\n {4}runs-on: ubuntu-latest\n {4}permissions:\n {6}contents: read\n {4}steps:\n/m, "the job grants contents read and nothing else");
   assert.match(TEMPLATE, /^on:\n {2}pull_request:\n {2}push:\n {4}branches: \[main\]\n/m);
   assert.ok(!/pull_request_target|secrets\.|workflow_run|id-token|:\s*write\b/.test(TEMPLATE.replace(/^#.*$/gm, "")), "no secrets, no write scopes, no privileged triggers");
   assert.match(TEMPLATE, /^ {2}sync-check:\n(?: {4}#.*\n)* {4}name: Conventions sync check\n {4}runs-on: ubuntu-latest\n/m, "the job name is the required-check context");
