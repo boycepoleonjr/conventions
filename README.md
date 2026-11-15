@@ -12,6 +12,7 @@ Engineering conventions for my repositories, written for both people and coding 
 | `skills/` | Shared Claude Code skills, synced to each repo's `.claude/skills/` |
 | `global/CLAUDE.md` | User-level agent rules, installed into `~/.claude/` locally and in cloud sessions |
 | `scripts/sync.mjs` | Applies the conventions to a repo. Node 20+, no dependencies |
+| `scripts/ai-attribution.mjs` | Pure functions behind the AI attribution scrub and check (copied into their workflow templates; tests keep the copies identical) |
 | `scripts/cloud-setup.sh` | Setup script for Claude Code cloud environments |
 
 ## Use it in a repo
@@ -34,7 +35,7 @@ node /tmp/conventions/scripts/sync.mjs --repo . --check  # report drift, exit 1 
 
 Conventions never choose dependency, runtime, action or tool versions for a repo (STANDARD SUP-7). Each repo's lockfile and Dependabot choose them. The synced `dependabot.yml` has no `ignore` rule.
 
-In the four synced workflows (`claude-code-review.yml`, `conventions-check.yml`, `conventions-sync-check.yml`, `deploy-secrets-lint.yml`, marked `"refs": "repo"` in `manifest.json`), the version refs are repo-owned after the first write:
+In the six synced workflows (`ai-attribution-check.yml`, `ai-attribution-scrub.yml`, `claude-code-review.yml`, `conventions-check.yml`, `conventions-sync-check.yml`, `deploy-secrets-lint.yml`, marked `"refs": "repo"` in `manifest.json`), the version refs are repo-owned after the first write:
 
 - A new file gets the template's refs as seeds.
 - Runner floor: the current checkout and setup-node seeds run on the node24 runtime, which needs GitHub Actions runner v2.327.1 or later. GitHub-hosted runners qualify. A repo on an older self-hosted runner updates the runner, or sets an older ref in its own workflow; refs are repo-owned, so sync keeps it (SUP-7).
@@ -105,6 +106,34 @@ echo '{"contexts":["Conventions sync check"]}' | gh api -X POST repos/OWNER/REPO
 If the check goes red, its log names the managed file: revert the edit, change the template in this repo, or add that file's id to `skip`. Dependabot bumps of action refs and `node-version` never fail it.
 
 To resolve a failure, revert the hand edit, change the template in this repo instead, or skip the file id in `.conventions.json`.
+
+## AI attribution scrub and check
+
+Cloud coding sessions append a footer to the PR descriptions, comments and reviews they write (`🤖 Generated with [Claude Code](...)`, a `Co-Authored-By` line, a `claude.ai/code/session_...` link), and to commits they make (`Co-Authored-By` and `Claude-Session` trailers, a bot author). There is no setting that turns this off everywhere, and the rule "no AI attribution" (in `AGENTS.md`) cannot stop a footer the platform adds after the agent has finished. So nobody, human or agent, should clean this up by hand. Two synced workflows (CI-7) do it:
+
+- **`ai-attribution-scrub.yml`** (job `scrub`) runs when a PR, issue, comment or review is opened, created, submitted or edited, and removes the footer. It cuts only from the end of the body: a trailing `Generated with/by Claude Code` line (with or without the robot emoji and the link), any `---` separator and blank lines directly above it, trailing `Co-Authored-By:` lines naming Claude or Anthropic, and a trailing `claude.ai/code/session_...` link line. Text in the middle of a body is never touched, and a body with no footer is not edited. It reads the body again right before editing, so a newer edit is not overwritten. Edits made with `GITHUB_TOKEN` do not start new workflow runs, so it cannot loop. On a fork PR, or any run whose token cannot write (Dependabot), it exits 0 with a notice and edits nothing. Permissions: `contents: read`, `issues: write`, `pull-requests: write`.
+- **`ai-attribution-check.yml`** (job `AI attribution check`) runs on every PR update and fails, in red, naming each bad commit SHA, if any commit in the PR has `noreply@anthropic.com` as author or committer email, the author name `Claude`, a `Co-Authored-By` trailer naming Claude or Anthropic, or a `Claude-Session` trailer. Dependabot commits and merge commits made by GitHub are ignored. A commit list the API did not return in full also fails: unchecked is not a pass. Read-only (`contents: read`, `pull-requests: read`).
+
+The scrub cannot rewrite commits, which is why the check exists. When it fails, no force push is needed: re-push the same changes on a new branch with commits authored by the repo owner, open a new PR from it, and close the old one. The failure message prints the steps:
+
+```bash
+git fetch origin && git switch -c <new-branch> origin/main
+git merge --squash origin/<old-branch>
+git commit    # with the repo owner's user.name and user.email, and no AI Co-Authored-By or Claude-Session lines
+git push -u origin <new-branch>
+```
+
+Opt out of either file by adding its id (`ai-attribution-scrub`, `ai-attribution-check`) to `skip` in `.conventions.json`.
+
+### Make the check required
+
+Like the sync check, a repo can make `AI attribution check` a required check on the default branch, so a PR with AI-authored commits cannot merge. Use the same steps as "Make the check required" above, with the name `AI attribution check`: merge the sync PR that adds `.github/workflows/ai-attribution-check.yml` first (GitHub only offers a check that has run), then add it to the branch protection rule or ruleset. From the command line, for a classic rule that already exists:
+
+```bash
+echo '{"contexts":["AI attribution check"]}' | gh api -X POST repos/OWNER/REPO/branches/main/protection/required_status_checks/contexts --input -
+```
+
+A repo that has `ai-attribution-check` in `skip` must not require it.
 
 ## PRs that edit the review workflow
 

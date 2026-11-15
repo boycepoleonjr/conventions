@@ -56,8 +56,8 @@ function bumpAll(repo) {
 }
 const refsByAction = (text) => Object.fromEntries(usesRefs(text).map((u) => [u.action, `${u.ref}${u.comment}`]));
 
-test("manifest: exactly the four synced workflows have repo-owned refs", () => {
-  assert.deepEqual(WORKFLOWS.map((f) => f.id).sort(), ["claude-review", "conventions-check", "deploy-secrets-lint", "sync-check"]);
+test("manifest: exactly the six synced workflows have repo-owned refs", () => {
+  assert.deepEqual(WORKFLOWS.map((f) => f.id).sort(), ["ai-attribution-check", "ai-attribution-scrub", "claude-review", "conventions-check", "deploy-secrets-lint", "sync-check"]);
   for (const f of MANIFEST.files.filter((x) => x.refs !== "repo")) assert.ok(!("refs" in f), `${f.id} must not set refs`);
 });
 

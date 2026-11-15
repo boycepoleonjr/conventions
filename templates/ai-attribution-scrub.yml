@@ -1,0 +1,145 @@
+# Synced from boycepoleonjr/conventions v{{conventions.version}} (CI-7).
+# Removes the AI footer that cloud sessions append to PR and issue text (Generated with Claude Code, Co-Authored-By, session link).
+# Only the end of a body is cut; text in the middle is never touched. Edits made with GITHUB_TOKEN do not start new workflow runs, so there is no loop.
+# Action refs (uses: ...@<sha>) are repo-owned after the first sync; Dependabot keeps them current (SUP-7).
+# Opt out by adding "ai-attribution-scrub" to "skip" in .conventions.json.
+name: AI attribution scrub
+on:
+  pull_request:
+    types: [opened, edited, reopened]
+  issue_comment:
+    types: [created, edited]
+  pull_request_review_comment:
+    types: [created, edited]
+  pull_request_review:
+    types: [submitted, edited]
+  issues:
+    types: [opened, edited]
+permissions:
+  contents: read
+jobs:
+  scrub:
+    name: scrub
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            // BEGIN scrubBody
+            function scrubBody(body) {
+              // Returns the body without a trailing AI footer, or the same string when there is nothing to remove.
+              // Only the end of the body is ever cut: everything before the cut is returned byte for byte, line endings included.
+              if (typeof body !== "string" || body === "") return body;
+              const generated = /^\s*[*_]*(?:\u{1F916}️?\s*)?Generated (?:by|with) (?:\[Claude Code\]\([^)\s]*\)|Claude Code)[*_]*\.?\s*$/iu;
+              const coAuthor = /^\s*co-authored-by:.*(?:\bclaude\b|\banthropic\b|noreply@anthropic\.com)/i;
+              const session = /^\s*(?:claude-session:\s*)?(?:<|\[[^\]]*\]\()?https?:\/\/claude\.(?:ai|com)\/code\/session_[A-Za-z0-9_-]+(?:[?#][^\s)>]*)?[)>]?\s*$/i;
+              const separator = /^\s*-{3,}\s*$/;
+              const lines = [];
+              for (let start = 0; ; ) {
+                let end = start;
+                while (end < body.length && body[end] !== "\n" && body[end] !== "\r") end++;
+                lines.push({ text: body.slice(start, end), end });
+                if (end >= body.length) break;
+                start = end + (body[end] === "\r" && body[end + 1] === "\n" ? 2 : 1);
+              }
+              let i = lines.length - 1;
+              let removed = false;
+              for (; i >= 0; i--) {
+                const t = lines[i].text;
+                if (t.trim() === "") continue;
+                if (generated.test(t) || coAuthor.test(t) || session.test(t)) { removed = true; continue; }
+                if (removed && separator.test(t)) continue;
+                break;
+              }
+              if (!removed) return body;
+              return i < 0 ? "" : body.slice(0, lines[i].end);
+            }
+            // END scrubBody
+            const { owner, repo } = context.repo;
+            const payload = context.payload;
+            const fullName = `${owner}/${repo}`;
+
+            // GITHUB_TOKEN is read-only on fork PRs (and on Dependabot runs), so there is nothing to edit there.
+            const prEvents = ["pull_request", "pull_request_review", "pull_request_review_comment"];
+            if (prEvents.includes(context.eventName)) {
+              const head = payload.pull_request && payload.pull_request.head && payload.pull_request.head.repo;
+              if (!head || head.full_name !== fullName) {
+                core.notice("The PR comes from a fork, so the token cannot write here. Nothing to scrub.");
+                return;
+              }
+            }
+
+            // Read the body again right before editing so a newer edit made after this event fired is never overwritten.
+            let target;
+            switch (context.eventName) {
+              case "pull_request": {
+                const pull_number = payload.pull_request.number;
+                target = {
+                  label: `PR #${pull_number} description`,
+                  get: async () => (await github.rest.pulls.get({ owner, repo, pull_number })).data.body,
+                  set: (body) => github.rest.pulls.update({ owner, repo, pull_number, body }),
+                };
+                break;
+              }
+              case "issues": {
+                const issue_number = payload.issue.number;
+                target = {
+                  label: `issue #${issue_number} description`,
+                  get: async () => (await github.rest.issues.get({ owner, repo, issue_number })).data.body,
+                  set: (body) => github.rest.issues.update({ owner, repo, issue_number, body }),
+                };
+                break;
+              }
+              case "issue_comment": {
+                const comment_id = payload.comment.id;
+                target = {
+                  label: `comment ${comment_id}`,
+                  get: async () => (await github.rest.issues.getComment({ owner, repo, comment_id })).data.body,
+                  set: (body) => github.rest.issues.updateComment({ owner, repo, comment_id, body }),
+                };
+                break;
+              }
+              case "pull_request_review_comment": {
+                const comment_id = payload.comment.id;
+                target = {
+                  label: `review comment ${comment_id}`,
+                  get: async () => (await github.rest.pulls.getReviewComment({ owner, repo, comment_id })).data.body,
+                  set: (body) => github.rest.pulls.updateReviewComment({ owner, repo, comment_id, body }),
+                };
+                break;
+              }
+              case "pull_request_review": {
+                const pull_number = payload.pull_request.number;
+                const review_id = payload.review.id;
+                target = {
+                  label: `review ${review_id}`,
+                  get: async () => (await github.rest.pulls.getReview({ owner, repo, pull_number, review_id })).data.body,
+                  set: (body) => github.rest.pulls.updateReview({ owner, repo, pull_number, review_id, body }),
+                };
+                break;
+              }
+              default:
+                core.setFailed(`Unsupported event ${context.eventName}.`);
+                return;
+            }
+
+            const current = await target.get();
+            const cleaned = scrubBody(current);
+            if (cleaned === current) {
+              core.info(`No AI footer at the end of the ${target.label}. Nothing changed.`);
+              return;
+            }
+            try {
+              await target.set(cleaned);
+            } catch (err) {
+              if (err && err.status === 403) {
+                core.notice(`The token cannot edit the ${target.label} (${err.message}). Left as is.`);
+                return;
+              }
+              throw err;
+            }
+            core.notice(`Removed the AI footer from the end of the ${target.label}.`);

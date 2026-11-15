@@ -1,0 +1,88 @@
+# Synced from boycepoleonjr/conventions v{{conventions.version}} (CI-7).
+# Fails a PR, loudly, when a commit in it is authored or committed by an AI tool: noreply@anthropic.com as author or committer,
+# the author name "Claude", a Co-Authored-By trailer naming Claude or Anthropic, or a Claude-Session trailer.
+# Dependabot commits and GitHub's own merge commits are ignored. Read-only: it never edits anything.
+# Action refs (uses: ...@<sha>) are repo-owned after the first sync; Dependabot keeps them current (SUP-7).
+# Opt out by adding "ai-attribution-check" to "skip" in .conventions.json.
+name: AI attribution check
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  check:
+    # The job name is the check name a repo requires in branch protection (README, "AI attribution scrub and check"). Keep it stable.
+    name: AI attribution check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            // BEGIN commitProblems
+            function commitProblems(c) {
+              // `c` is one commit as returned by GET /repos/{owner}/{repo}/pulls/{number}/commits.
+              // Returns the reasons the commit carries AI authorship (an empty list when it is fine).
+              const git = c.commit || {};
+              const lower = (s) => String(s || "").trim().toLowerCase();
+              const authorEmail = lower(git.author && git.author.email);
+              const committerEmail = lower(git.committer && git.committer.email);
+              const login = lower(c.author && c.author.login);
+              // Dependabot commits are ignored.
+              if (login === "dependabot[bot]" || /dependabot\[bot\]@users\.noreply\.github\.com$/.test(authorEmail)) return [];
+              // So are merge commits made by GitHub (the "Update branch" button, merge buttons): several parents, committed by GitHub.
+              const merge = (c.parents || []).length > 1;
+              if (merge && (committerEmail === "noreply@github.com" || lower(c.committer && c.committer.login) === "web-flow")) return [];
+              const problems = [];
+              if (authorEmail === "noreply@anthropic.com") problems.push("author email is noreply@anthropic.com");
+              if (committerEmail === "noreply@anthropic.com") problems.push("committer email is noreply@anthropic.com");
+              if (lower(git.author && git.author.name) === "claude") problems.push('author name is "Claude"');
+              // Only the final trailer block counts, as git interpret-trailers reads it: the last paragraph, after a title paragraph,
+              // where every line is a "Key: value" trailer (or an indented continuation of one). A line quoted in prose is not a trailer.
+              const lines = String(git.message || "").split(/\r?\n/);
+              while (lines.length && lines[lines.length - 1].trim() === "") lines.pop();
+              let start = lines.length;
+              while (start > 0 && lines[start - 1].trim() !== "") start--;
+              const block = lines.slice(start);
+              const trailers = [];
+              let valid = start > 0 && lines.slice(0, start).some((l) => l.trim() !== "");
+              for (const line of block) {
+                if (/^[A-Za-z0-9-]+[ \t]*:/.test(line)) trailers.push(line);
+                else if (/^[ \t]+\S/.test(line) && trailers.length > 0) trailers[trailers.length - 1] += " " + line.trim();
+                else valid = false;
+              }
+              if (valid && trailers.some((t) => /^co-authored-by[ \t]*:.*(?:\bclaude\b|\banthropic\b)/i.test(t))) problems.push("message has a Co-Authored-By trailer naming Claude or Anthropic");
+              if (valid && trailers.some((t) => /^claude-session[ \t]*:/i.test(t))) problems.push("message has a Claude-Session trailer");
+              return problems;
+            }
+            // END commitProblems
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+            const commits = await github.paginate(github.rest.pulls.listCommits, { owner, repo, pull_number: pr.number, per_page: 100 });
+            core.info(`Checking ${commits.length} commit(s) in PR #${pr.number}.`);
+
+            // The API lists at most 250 commits. A commit that was not listed was not checked, and that is a failure, not a pass.
+            if (commits.length < pr.commits) {
+              core.setFailed(`AI attribution check could not list every commit: got ${commits.length} of ${pr.commits}. Unchecked commits are a failure, not a pass.`);
+              return;
+            }
+
+            const bad = commits.map((c) => ({ sha: c.sha, subject: String((c.commit && c.commit.message) || "").split("\n")[0], problems: commitProblems(c) })).filter((c) => c.problems.length > 0);
+            if (bad.length === 0) {
+              core.info("No commit carries AI authorship.");
+              return;
+            }
+
+            for (const c of bad) core.error(`${c.sha} (${c.subject}): ${c.problems.join("; ")}`);
+            const base = pr.base.ref;
+            const head = pr.head.ref;
+            const fix = [
+              `How to fix (no force push needed): re-push the same changes on a new branch with commits authored by the repo owner (${owner}).`,
+              `  1. git fetch origin && git switch -c <new-branch> origin/${base}`,
+              `  2. git merge --squash origin/${head}`,
+              `  3. Check that git config user.name and user.email are the repo owner's, then git commit. Leave out Co-Authored-By and Claude-Session lines for AI tools.`,
+              `  4. git push -u origin <new-branch>, open a new PR from it, and close this one.`,
+            ].join("\n");
+            core.info(fix);
+            core.setFailed(`AI attribution check failed: ${bad.length} commit(s) carry AI authorship (${bad.map((c) => c.sha).join(", ")}).\n${fix}`);
