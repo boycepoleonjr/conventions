@@ -144,7 +144,7 @@ jobs:
             const base = pr.base.ref;
             const head = pr.head.ref;
             const fix = [
-              `How to fix (no force push needed): re-push the same changes on a new branch with commits authored by the repo owner (${owner}).`,
+              `How to fix (no force push needed): re-push the same changes on a new branch with commits authored by the repo owner.`,
               `  1. git fetch origin && git switch -c <new-branch> origin/${base}`,
               `  2. git merge --squash origin/${head}`,
               `  3. Check that git config user.name and user.email are the repo owner's, then git commit. Leave out Co-Authored-By and Claude-Session lines for AI tools.`,

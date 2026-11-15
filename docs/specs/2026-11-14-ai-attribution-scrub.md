@@ -61,6 +61,16 @@ Codex raised these during the 1.9.0 rollout; each is a patch to the design above
 - **Accepted trade-offs.** `@openai.com` is matched as a suffix, so a person with an OpenAI address is flagged. Names like `Jules` match only as a whole author name, so `Jules Verne` is not flagged. The identities are taken from the tools' documented bot accounts and from the list the owner gave; a new tool is one entry in `AI_AGENTS` plus a re-copy.
 - **Tests.** Every identity as author and committer, by login and by email; trailers per tool; look-alikes; the ignore rules; the list driving both functions (an entry added at runtime is picked up); footer variants per tool; end-anchoring; footer-only bodies for all five events; the permission shape of all three templates.
 
+## v1.9.2 (2026-11-15): output hygiene across the synced workflows
+
+Found while fixing the attribution check's output (v1.9.1, Codex P1: no personal data in logs): the same rule applies to every synced workflow, and two of them still broke it or lacked deny-by-default permissions.
+
+- **Waiver and lookup output.** The self-edit waiver path in `claude-code-review.yml` wrote the admin's GitHub login into an Actions warning (`<login> waived it for <sha>`), and the permission-lookup error wrote the commenter's login and the repo name. The messages are now `Waiver accepted from a repo admin for <short sha>` and `Could not verify the commenter's permission`. The decision logic is untouched. The lookup's stderr is hidden, because the CLI's own error text can repeat the request path, which holds the login. Trade-off: a failed lookup shows no HTTP status.
+- **Scan.** Every template was scanned for echoes, annotations and `core.*` calls that print a login, name or email. The attribution check's failure text named the repo owner's login; it now says "the repo owner". A test scans all workflow templates for this from now on.
+- **Deny by default for the rest.** `conventions-check.yml` and `deploy-secrets-lint.yml` use `permissions: {}` at the workflow level and `contents: read` on the job. Every synced workflow now follows the v1.9.1 pattern, and a test lists them all, so a new workflow template cannot skip it.
+- **Tests.** The real verify step run against a fake CLI that fails like the real one (error text with the request path) through every waiver and lookup path; the scan above; permissions for all six templates.
+- **Rollout.** `claude-code-review.yml` changes, so each repo's sync PR is a self-edit PR that needs one `review-waiver`, as for every release.
+
 ## Acceptance criteria
 
 1. A body ending in a footer (with or without separator, emoji, link, co-author lines, session link, Windows line endings) is cleaned; a mention anywhere but the end, and a body with nothing to remove, come back identical.

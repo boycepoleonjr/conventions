@@ -343,7 +343,8 @@ test("script: a bad commit fails loudly, naming its SHA, why, and how to fix it"
   assert.ok(msg.includes("ddddddd") && msg.includes("eeeeeee"), "both bad SHAs are named (short form)");
   assert.ok(!msg.includes("aaaaaaa"), "the good commit is not named");
   assert.ok(!msg.includes("d".repeat(8)), "only the short SHA is used");
-  assert.match(msg, /re-push the same changes on a new branch with commits authored by the repo owner \(octo\)/);
+  assert.match(msg, /re-push the same changes on a new branch with commits authored by the repo owner\./);
+  assert.ok(!msg.includes("octo"), "the repo owner's login is not printed");
   assert.match(msg, /no force push needed/);
   assert.match(msg, /git switch -c <new-branch> origin\/main/);
   assert.match(msg, /git merge --squash origin\/feat\/x/);

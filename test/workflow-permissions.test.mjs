@@ -1,6 +1,6 @@
 // node --test test/*.test.mjs
-// v1.9.1: the attribution workflows and the sync check deny permissions by default (workflow-level `permissions: {}`)
-// and grant scopes per job, so a job added later gets nothing until someone grants it.
+// Every synced workflow denies permissions by default (workflow-level `permissions: {}`: v1.9.1 for the attribution workflows
+// and the sync check, v1.9.2 for the rest) and grants scopes per job, so a job added later gets nothing until someone grants it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -15,6 +15,9 @@ const EXPECTED = [
   ["templates/ai-attribution-scrub.yml", "scrub", ["contents: read", "issues: write", "pull-requests: write"]],
   ["templates/ai-attribution-check.yml", "check", ["contents: read", "pull-requests: read"]],
   ["templates/conventions-sync-check.yml", "sync-check", ["contents: read"]],
+  ["templates/conventions-check.yml", "drift", ["contents: read"]],
+  ["templates/deploy-secrets-lint.yml", "deploy-secrets", ["contents: read"]],
+  ["templates/claude-code-review.yml", "claude-review", ["contents: read", "pull-requests: read", "issues: read", "id-token: write"]],
 ];
 
 // The text of one job: from its `  id:` line to the next job or the end of the file.
@@ -44,10 +47,16 @@ for (const [file, id, scopes] of EXPECTED) {
   });
 }
 
-test("workflow-level permissions are not widened anywhere in the three templates", () => {
+test("workflow-level permissions are not widened anywhere in the listed templates", () => {
   for (const [file] of EXPECTED) {
     const top = read(file).split(/^jobs:/m)[0];
     assert.ok(!/^permissions:\n/m.test(top), `${file}: no scopes at the top level`);
     assert.ok(!/:\s*write\b/.test(top.replace(/^#.*$/gm, "")), `${file}: no write scope above jobs`);
   }
+});
+
+test("every workflow template is covered: workflow-level permissions are {} and no workflow template is missing from the list", () => {
+  const workflows = fs.readdirSync(path.join(ROOT, "templates")).filter((n) => n.endsWith(".yml") && n !== "dependabot.yml").map((n) => `templates/${n}`).sort();
+  assert.deepEqual(EXPECTED.map(([f]) => f).sort(), workflows, "a new workflow template must be added to EXPECTED with its job scopes");
+  for (const f of workflows) assert.match(read(f), /^permissions: \{\}$/m, `${f}: workflow-level permissions are {}`);
 });
