@@ -4,6 +4,8 @@ Branch `claude/wonderful-meitner-g7er66`, PR into `main` (v1.8.2). The PR is the
 
 ## What I built
 
+The plan is `docs/specs/2026-11-14-ai-attribution-scrub.md`. I wrote it after the first push, when the Codex review pointed out that FLOW-6 requires a plan in `docs/specs/` and I had only a handoff. It records the decisions as they were made.
+
 - `templates/ai-attribution-scrub.yml`, manifest id `ai-attribution-scrub`, installed as `.github/workflows/ai-attribution-scrub.yml`. Job `scrub`, `actions/github-script` pinned to v9.0.0 (`3a2844b7e9c422d3c10d287c895573f7108da1b3`), permissions `contents: read`, `issues: write`, `pull-requests: write`. It removes the footer from the end of a body and edits only when something changed.
 - `templates/ai-attribution-check.yml`, manifest id `ai-attribution-check`, job `AI attribution check`. I made it a separate file, not a second job in the scrub workflow. The reason: the scrub workflow also triggers on `pull_request` `edited`, and a required check whose job is skipped on some events can report "skipped" (which counts as passing) on the same commit after a real failure. A file with only `opened, synchronize, reopened` never has that problem. It needs only `contents: read` and `pull-requests: read`.
 - `scripts/ai-attribution.mjs`: `scrubBody` and `commitProblems`, pure functions. Synced repos do not get this file, so each function is copied verbatim into its template between `BEGIN`/`END` markers, and a test fails if a copy drifts. I did this instead of teaching `sync.mjs` to inline scripts, so `sync.mjs` is unchanged.
