@@ -40,7 +40,7 @@ The rule "No AI attribution in commits, PR bodies or comments" (`AGENTS.md`) can
 ### Check (`templates/ai-attribution-check.yml`, manifest id `ai-attribution-check`, job `AI attribution check`)
 
 - **Triggers:** `pull_request` (opened, synchronize, reopened). A separate file, not a second job in the scrub workflow: the scrub also runs on `pull_request` `edited`, and a required check whose job is skipped on some events can report "skipped" (which counts as passing) on the same commit after a real failure.
-- **Rules:** a commit is bad when its author or committer email is `noreply@anthropic.com`, its author name is `Claude`, its message has a `Co-Authored-By` trailer naming Claude or Anthropic, or its message has a `Claude-Session` trailer. Dependabot commits and merge commits made by GitHub (several parents, committed by GitHub) are ignored. A local merge by an AI author is still flagged, and a one-parent commit made by GitHub (squash, web edit) is still checked.
+- **Rules:** a commit is bad when its author or committer email is `noreply@anthropic.com`, its author name is `Claude`, its message has a `Co-Authored-By` trailer naming Claude or Anthropic, or its message has a `Claude-Session` trailer. Only trailers count: the message is read the way `git interpret-trailers` reads it, so a trailer is a line of the final paragraph (after the title paragraph) where every line is a `Key: value` trailer or an indented continuation of one. A `Co-Authored-By: Claude ...` line quoted in prose, in a code block, or in a paragraph followed by more text is not attribution (Codex review, P2). Dependabot commits and merge commits made by GitHub (several parents, committed by GitHub) are ignored. A local merge by an AI author is still flagged, and a one-parent commit made by GitHub (squash, web edit) is still checked.
 - **Failure behavior:** one `::error::` per bad commit with its full SHA, subject and reasons, then a failed job whose message names every bad SHA and says how to fix it: re-push the same changes on a new branch with commits authored by the repo owner (no force push needed), with the git commands. If the API returns fewer commits than the PR has (it caps at 250), the job fails: unchecked is not a pass.
 - **Permissions:** `contents: read`, `pull-requests: read`. No checkout of PR code, no write scopes, no secrets.
 - **Required check:** repos can make `AI attribution check` a required check (STANDARD SET-1, README), after the sync PR that adds the workflow has merged.
@@ -54,7 +54,7 @@ The rule "No AI attribution in commits, PR bodies or comments" (`AGENTS.md`) can
 1. A body ending in a footer (with or without separator, emoji, link, co-author lines, session link, Windows line endings) is cleaned; a mention anywhere but the end, and a body with nothing to remove, come back identical.
 2. Each of the five event types updates the right object with the right API call, only when something changed, and never from a stale payload.
 3. A fork PR and a 403 end with a notice and exit 0; any other error fails.
-4. The check fails, naming each bad SHA and the fix, for every rule; it passes clean PRs, Dependabot and GitHub merge commits; it fails on a truncated commit list.
+4. The check fails, naming each bad SHA and the fix, for every rule; it passes clean PRs, Dependabot and GitHub merge commits, and commits that only quote attribution lines in prose; it fails on a truncated commit list.
 5. Both workflows pin actions by full SHA with a version comment and grant only the permissions above.
 6. A new repo gets both files from `sync.mjs --init`, and `--check` is clean. Prettier is clean on both rendered files.
 
@@ -68,12 +68,12 @@ The rule "No AI attribution in commits, PR bodies or comments" (`AGENTS.md`) can
 
 - **The scrub edits user-visible text.** Mitigations: end-of-body only, fresh read, no write when unchanged, byte-exact kept text, and tests that run the real script against a fake GitHub. A small race remains between the read and the write.
 - **Token permissions on `issue_comment` and review events are untested on GitHub.** The first live run in a synced repo is the real test. A failure is loud (job fails) except 403, which is a notice.
-- **False positives in the check:** a human co-author whose name contains "Claude" as a word. Accepted; the rule is a word match on Claude or Anthropic.
+- **False positives in the check:** a human co-author whose name contains "Claude" as a word is flagged (the rule is a word match on Claude or Anthropic); accepted. Commits that only quote the syntax in prose are not flagged, because only the final trailer block is read. Where git is lenient and this check is strict: git also accepts a block that is mostly trailers when it has a recognized one such as `Signed-off-by`, and `(cherry picked from ...)` lines; here every line of the block must be a trailer, so such a block is not read as trailers and a trailer in it would be missed.
 - **Duplicated code:** two copies of each function. The drift test makes a mismatch a failing build.
 
 ## Test plan
 
 - `test/ai-attribution-scrub.test.mjs`: the pure function, the template contract (SHA pin, permissions, exact triggers), and the real script against a fake GitHub for all five events, a fork PR, a 403, a stale payload and an unchanged body.
-- `test/ai-attribution-check.test.mjs`: every rule, both ignore cases, the real script against a fake GitHub for pass, fail naming each SHA and the fix text, and a truncated commit list.
+- `test/ai-attribution-check.test.mjs`: every rule, both ignore cases, attribution quoted in prose versus real trailers (with a parity test against `git interpret-trailers`), the real script against a fake GitHub for pass, fail naming each SHA and the fix text, and a truncated commit list.
 - `sync.mjs --init` then `--check` on a fresh repo, and Prettier 3 on the rendered workflows (the existing `test.yml` step).
 - Not testable here: a live run on GitHub.

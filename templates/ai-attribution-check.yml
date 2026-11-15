@@ -38,9 +38,22 @@ jobs:
               if (authorEmail === "noreply@anthropic.com") problems.push("author email is noreply@anthropic.com");
               if (committerEmail === "noreply@anthropic.com") problems.push("committer email is noreply@anthropic.com");
               if (lower(git.author && git.author.name) === "claude") problems.push('author name is "Claude"');
-              const message = String(git.message || "");
-              if (/^[ \t]*co-authored-by:.*(?:\bclaude\b|\banthropic\b)/im.test(message)) problems.push("message has a Co-Authored-By trailer naming Claude or Anthropic");
-              if (/^[ \t]*claude-session:/im.test(message)) problems.push("message has a Claude-Session trailer");
+              // Only the final trailer block counts, as git interpret-trailers reads it: the last paragraph, after a title paragraph,
+              // where every line is a "Key: value" trailer (or an indented continuation of one). A line quoted in prose is not a trailer.
+              const lines = String(git.message || "").split(/\r?\n/);
+              while (lines.length && lines[lines.length - 1].trim() === "") lines.pop();
+              let start = lines.length;
+              while (start > 0 && lines[start - 1].trim() !== "") start--;
+              const block = lines.slice(start);
+              const trailers = [];
+              let valid = start > 0 && lines.slice(0, start).some((l) => l.trim() !== "");
+              for (const line of block) {
+                if (/^[A-Za-z0-9-]+[ \t]*:/.test(line)) trailers.push(line);
+                else if (/^[ \t]+\S/.test(line) && trailers.length > 0) trailers[trailers.length - 1] += " " + line.trim();
+                else valid = false;
+              }
+              if (valid && trailers.some((t) => /^co-authored-by[ \t]*:.*(?:\bclaude\b|\banthropic\b)/i.test(t))) problems.push("message has a Co-Authored-By trailer naming Claude or Anthropic");
+              if (valid && trailers.some((t) => /^claude-session[ \t]*:/i.test(t))) problems.push("message has a Claude-Session trailer");
               return problems;
             }
             // END commitProblems

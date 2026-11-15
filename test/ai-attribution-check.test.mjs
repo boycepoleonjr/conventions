@@ -71,6 +71,77 @@ test("a Claude-Session trailer is flagged", () => {
   assert.deepEqual(commitProblems(commit({ commit: { message: "fix: x\n\nClaude-Session: https://claude.ai/code/session_01Abc" } })), ["message has a Claude-Session trailer"]);
 });
 
+// ---- trailers only: attribution quoted in prose is not authorship (Codex P2) -----------------------------------------------
+
+const withMessage = (message) => commit({ commit: { message } });
+const CO = "Co-Authored-By: Claude <noreply@anthropic.com>";
+const SESS = "Claude-Session: https://claude.ai/code/session_01Abc";
+
+test("trailers: the same lines quoted in prose are not attribution", () => {
+  for (const [name, message] of [
+    ["Codex's example", `docs: add fixture\n\nThe fixture contains:\n${CO}\n\nThis is example input, not authorship metadata.`],
+    ["glued to a body paragraph", `docs: x\n\nThe fixture contains:\n${CO}`],
+    ["trailer-shaped block followed by prose", `docs: x\n\n${CO}\n${SESS}\n\nExample input only.`],
+    ["a Claude-Session line quoted in prose", `docs: x\n\nThe hook writes this line:\n${SESS}\n\nThat is all.`],
+    ["right under the subject, no blank line", `docs: x\n${CO}`],
+    ["the only paragraph of the message", CO],
+    ["indented in a code block", `docs: x\n\n    ${CO}\n    ${SESS}\n\nDone.`],
+    ["in a fenced block", `docs: x\n\n\`\`\`\n${CO}\n\`\`\`\n`],
+    ["a trailer line beside a non-trailer line in the last paragraph", `docs: x\n\nFixes the thing.\n${CO}`],
+    ["mentioned in a sentence", `docs: x\n\nWe strip the Co-Authored-By: Claude line from PR text.`],
+  ]) {
+    assert.deepEqual(commitProblems(withMessage(message)), [], name);
+  }
+});
+
+test("trailers: real trailers in the final block are still flagged", () => {
+  const co = ["message has a Co-Authored-By trailer naming Claude or Anthropic"];
+  const session = ["message has a Claude-Session trailer"];
+  for (const [name, message, want] of [
+    ["plain", `feat: x\n\n${CO}`, co],
+    ["after a body", `feat: x\n\nBody text.\n\n${CO}`, co],
+    ["trailing blank lines", `feat: x\n\nBody.\n\n${CO}\n\n\n`, co],
+    ["mixed with other trailers", `feat: x\n\nSigned-off-by: A <a@example.com>\n${CO}\n${SESS}`, [...co, ...session]],
+    ["Claude-Session alone", `feat: x\n\n${SESS}`, session],
+    ["Windows line endings", `feat: x\r\n\r\nBody.\r\n\r\n${CO}\r\n${SESS}\r\n`, [...co, ...session]],
+    ["continuation line", `feat: x\n\nCo-Authored-By: Claude\n  <noreply@anthropic.com>`, co],
+    ["lower case key", `feat: x\n\nco-authored-by: Claude Opus 5.5 <noreply@anthropic.com>`, co],
+    ["Anthropic by name", `feat: x\n\nCo-Authored-By: Anthropic Bot <bot@example.com>`, co],
+    ["a quote in the body does not hide the real trailer", `feat: x\n\nThe fixture contains:\n${CO}\n\nExample only.\n\n${CO}`, co],
+  ]) {
+    assert.deepEqual(commitProblems(withMessage(message)), want, name);
+  }
+});
+
+test("trailers: a person's Co-Authored-By in the final block is fine, even next to a quoted Claude line", () => {
+  assert.deepEqual(commitProblems(withMessage(`feat: x\n\nCo-Authored-By: Alice Example <alice@example.com>`)), []);
+  assert.deepEqual(commitProblems(withMessage(`feat: x\n\nQuoted: ${CO}\n\nCo-Authored-By: Alice Example <alice@example.com>`)), []);
+});
+
+test("trailers: agrees with git interpret-trailers on every message above", () => {
+  const messages = [
+    `docs: add fixture\n\nThe fixture contains:\n${CO}\n\nThis is example input, not authorship metadata.\n`,
+    `docs: x\n\nThe fixture contains:\n${CO}\n`,
+    `docs: x\n${CO}\n`,
+    `${CO}\n`,
+    `docs: x\n\nFixes the thing.\n${CO}\n`,
+    `feat: x\n\n${CO}\n`,
+    `feat: x\n\nBody.\n\n${CO}\n\n\n`,
+    `feat: x\n\nSigned-off-by: A <a@example.com>\n${CO}\n${SESS}\n`,
+    `feat: x\n\n${SESS}\n`,
+    `feat: x\r\n\r\nBody.\r\n\r\n${CO}\r\n${SESS}\r\n`,
+    `feat: x\n\nCo-Authored-By: Claude\n  <noreply@anthropic.com>\n`,
+    `feat: x\n\nThe fixture contains:\n${CO}\n\nExample only.\n\n${CO}\n`,
+    `feat: x\n\nCo-Authored-By: Alice Example <alice@example.com>\n`,
+  ];
+  for (const message of messages) {
+    const r = spawnSync("git", ["interpret-trailers", "--parse"], { input: message, encoding: "utf8" });
+    assert.equal(r.status, 0, "git interpret-trailers ran");
+    const gitSaysAttribution = /^(co-authored-by[ \t]*:.*(claude|anthropic)|claude-session[ \t]*:)/im.test(r.stdout.replace(/\r/g, ""));
+    assert.equal(commitProblems(withMessage(message)).length > 0, gitSaysAttribution, JSON.stringify(message));
+  }
+});
+
 test("every problem on a commit is reported", () => {
   const p = commitProblems(commit({ commit: { author: { name: "Claude", email: "noreply@anthropic.com" }, committer: { name: "Claude", email: "noreply@anthropic.com" }, message: "x\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nClaude-Session: https://claude.ai/code/session_01Abc" } }));
   assert.equal(p.length, 5);
@@ -158,6 +229,13 @@ test("script: a bad commit fails loudly, naming its SHA, why, and how to fix it"
   assert.equal(r.errors.length, 2, "one annotation per bad commit");
   assert.ok(r.errors[0].startsWith("d".repeat(40)) && r.errors[0].includes("feat: x") && r.errors[0].includes("Co-Authored-By"));
   assert.ok(r.errors[1].startsWith("e".repeat(40)) && r.errors[1].includes("Claude-Session"));
+});
+
+test("script: a commit that only quotes attribution syntax in prose does not fail the PR", async () => {
+  const quoting = commit({ sha: "f".repeat(40), commit: { message: `docs: document the check\n\nThe fixture contains:\n${CO}\n${SESS}\n\nThis is example input, not authorship metadata.` } });
+  const r = await run([quoting]);
+  assert.deepEqual(r.failed, []);
+  assert.deepEqual(r.errors, []);
 });
 
 test("script: Dependabot and GitHub merge commits do not fail it", async () => {

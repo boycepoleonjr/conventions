@@ -18,12 +18,14 @@ The plan is `docs/specs/2026-11-14-ai-attribution-scrub.md`. I wrote it after th
 - **Session link.** Only `claude.ai/code/session_...` (and `claude.com`) counts, bare, in `<>`, as a markdown link, or after `Claude-Session:`. Other claude.ai links (artifacts, chats) are kept.
 - **Read-only tokens.** Fork PRs are skipped with a notice before any API call. A 403 on the edit (Dependabot) is a notice. Any other error fails the job.
 - **The check's ignore rules.** Dependabot (author login `dependabot[bot]`) and GitHub merge commits (more than one parent, committed by GitHub) are ignored. A merge made locally by an AI author is still flagged, and a squash or web-edit commit by GitHub with one parent is still checked. A PR whose commit list is shorter than its commit count (the API caps at 250) fails.
+- **Trailers only.** The check reads the final trailer block the way `git interpret-trailers` does (Codex P2 on the first review of this PR): a `Co-Authored-By: Claude` line quoted in prose, a code block, or a paragraph followed by more text is not attribution. It is stricter than git in one way: every line of the block must be a trailer, so a mostly-trailer block that git would accept because of a `Signed-off-by` line is not read, and a Claude trailer in it would be missed.
 - **Author name rule.** Only the author name `Claude` is flagged, not names that merely contain it (for example "Claude Debussy"). The committer name is not checked; the committer email is.
 
 ## What I verified
 
-- `node --test test/*.test.mjs`: 185 pass, 0 fail, exit 0 on Node 22.23.4 (134 before this change, 51 new). I could not run Node 20 here.
+- `node --test test/*.test.mjs`: 190 pass, 0 fail, exit 0 on Node 22.23.4 (134 before this change, 56 new). I could not run Node 20 here.
 - Mutation checks: breaking the separator rule and the "only edit when changed" guard each fail tests. The first mutation exposed a missing case (a `---` after a footer that is not at the end); I added the test and re-ran.
+- Trailer-only matching: the five new check tests fail on the previous function (3 of them) and pass on the new one, and a parity test compares the check with `git interpret-trailers --parse` on 13 messages.
 - The real workflow scripts, extracted from the templates, run against a fake `github`/`context`/`core` for all five event types, a fork PR, a 403, a stale payload, a clean PR, a failing PR with two bad commits, Dependabot and merge commits, and a truncated commit list.
 - Prettier 3 (the CI step, `--no-config`) is clean on every rendered workflow from a fresh `sync.mjs --init`. `sync.mjs --check` after the init is clean, and both new files are written with the version filled in.
 
