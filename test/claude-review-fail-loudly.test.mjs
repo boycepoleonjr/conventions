@@ -86,7 +86,7 @@ test("the verify step comes after the action, is unconditional, and only reads",
   assert.equal(calls.length, 2, "exactly two gh calls");
   assert.equal(script.match(/\bgh\b/g).length, 2);
   assert.match(calls[0], /^gh api "repos\/\$REPO\/issues\/\$PR_NUMBER\/comments" --paginate\)?/);
-  assert.match(calls[1], /^gh api "repos\/\$REPO\/collaborators\/\$login\/permission" --jq \.permission\)/);
+  assert.match(calls[1], /^gh api "repos\/\$REPO\/collaborators\/\$login\/permission" --jq \.permission 2>\/dev\/null\)/);
   assert.ok(script.indexOf(calls[1]) > script.indexOf('if [ "${SELF_EDIT:-false}" = "true" ]; then') && script.indexOf(calls[1]) < script.indexOf("# Newest bot comment"), "the permission lookup is only reachable on self-edit PRs");
   assert.ok(!/(-X|--method|\s-f\b|\s-F\b|--field|--input)/.test(script.replace(/-sr|-ne/g, "")), "no write flags");
   assert.ok(!/gh (pr comment|pr review|issue)/.test(script));
@@ -111,7 +111,7 @@ echo "$@" >> "${dir}/gh-args"
 case "$2" in
   */collaborators/*/permission)
     login="\${2#*collaborators/}"; login="\${login%/permission}"
-    if [ -f "${dir}/perms/$login" ]; then cat "${dir}/perms/$login"; else echo 'HTTP 404' >&2; exit 1; fi ;;
+    if [ -f "${dir}/perms/$login" ]; then cat "${dir}/perms/$login"; else echo "gh: Not Found (HTTP 404) https://api.github.com/repos/o/r/collaborators/$login/permission" >&2; exit 1; fi ;;
   *) ${ghFails ? "echo 'HTTP 500' >&2; exit 1" : `cat "${dir}/comments.json"`} ;;
 esac
 `,
@@ -330,7 +330,8 @@ const NO_WAIVER_ERROR = /::error::This PR edits \.github\/workflows\/claude-code
 test("self-edit verify: a user-owned repo's OWNER waiver for the head SHA passes without any permission lookup, and says no review ran", () => {
   const r = runVerify([[owner(`Independent review done.\n\n${waiver()}\n`)]], SELF);
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /::warning::No Claude review ran: this PR edits the review workflow\. boyce waived it for a{40}/);
+  assert.match(r.out, /::warning::No Claude review ran: this PR edits the review workflow\. Waiver accepted from a repo admin for a{7}\.$/m);
+  assert.doesNotMatch(r.out, /boyce/, "the waiver author's login is not logged");
   assert.doesNotMatch(r.out, /Review complete/, "must not claim a review happened");
   assert.equal(r.args.trim(), "api repos/o/r/issues/7/comments --paginate", "one GET of this PR's issue comments, no permission lookup");
   assert.equal(runVerify([[owner(`${waiver()}\r\n`)]], SELF).code, 0, "CRLF line endings are fine");
@@ -340,7 +341,8 @@ test("self-edit verify: a user-owned repo's OWNER waiver for the head SHA passes
 test("self-edit verify: an org MEMBER with admin permission passes (the owner's comment is MEMBER in an org repo)", () => {
   const r = runVerify([[human2("orgowner", "MEMBER", waiver())]], { ...SELF, perms: { orgowner: "admin" } });
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /::warning::No Claude review ran: this PR edits the review workflow\. orgowner waived it for a{40}/);
+  assert.match(r.out, /::warning::No Claude review ran: this PR edits the review workflow\. Waiver accepted from a repo admin for a{7}\.$/m);
+  assert.doesNotMatch(r.out, /orgowner/, "the waiver author's login is not logged");
   assert.deepEqual(lookups(r), ["api repos/o/r/collaborators/orgowner/permission --jq .permission"], "one GET of that commenter's permission");
   // Other associations that can hold admin: an outside collaborator, a CONTRIBUTOR-labelled account, no association at all.
   for (const assoc of ["COLLABORATOR", "CONTRIBUTOR", "NONE"]) {
@@ -363,12 +365,68 @@ test("self-edit verify: a MEMBER (or anyone) without admin permission fails, wha
 test("self-edit verify: a failing permission lookup fails loudly, even for a commenter who might have been an admin", () => {
   const r = runVerify([[human2("orgowner", "MEMBER", waiver())]], SELF); // no perms entry: the fake gh answers HTTP 404
   assert.equal(r.code, 1, r.out);
-  assert.match(r.out, /::error::Could not look up the permission of orgowner on o\/r to check their review-waiver\. Re-run the job\./);
+  assert.match(r.out, /::error::Could not verify the commenter's permission to check their review-waiver\. Re-run the job\./);
+  assert.doesNotMatch(r.out, /orgowner|collaborators|api\.github\.com|HTTP 404/, "no login, request path or gh error text is logged");
   assert.doesNotMatch(r.out, /waived/);
   // A lookup that fails for one commenter is not skipped in favour of a later one.
   const two = runVerify([[human2("a-first", "MEMBER", waiver(), "2026-11-04T10:00:00Z", 1), human2("b-second", "MEMBER", waiver(), "2026-11-04T11:00:00Z", 2)]], { ...SELF, perms: { "b-second": "admin" } });
   assert.equal(two.code, 1, two.out);
-  assert.match(two.out, /Could not look up the permission of a-first/);
+  assert.match(two.out, /Could not verify the commenter's permission/);
+  assert.doesNotMatch(two.out, /a-first|b-second/);
+});
+
+// ---- no login, name or email in the output of the waiver and lookup paths (v1.9.2) ---------------------------------------
+
+const IDENTITIES = ["boyce-poleon", "orgowner-x", "a-first-dev", "b-second-dev", "someadmin-y", "dev-z"];
+const PERSONAL_BODY = "Independent review done by Jane Doe <jane.doe@example.com>.";
+const noIdentity = (out, where) => {
+  for (const id of IDENTITIES) assert.ok(!out.includes(id), `${where}: output repeats the login ${id}\n${out}`);
+  for (const v of ["Jane Doe", "jane.doe", "example.com", "api.github.com", "collaborators/", "HTTP 404"]) assert.ok(!out.includes(v), `${where}: output repeats ${v}\n${out}`);
+};
+
+test("self-edit verify: nothing personal reaches the output in any waiver or lookup path", () => {
+  const w = (extra = "") => `${PERSONAL_BODY}\n\n${waiver()}\n${extra}`;
+  const runs = {
+    "owner waiver": runVerify([[human2("boyce-poleon", "OWNER", w())]], SELF),
+    "org admin waiver": runVerify([[human2("orgowner-x", "MEMBER", w())]], { ...SELF, perms: { "orgowner-x": "admin" } }),
+    "admin among several": runVerify([[human2("dev-z", "MEMBER", w(), "2026-11-04T10:00:00Z", 1), human2("someadmin-y", "MEMBER", w(), "2026-11-04T11:00:00Z", 2)]], { ...SELF, perms: { "dev-z": "write", "someadmin-y": "admin" } }),
+    "lookup fails (404 with the path in gh's own error text)": runVerify([[human2("orgowner-x", "MEMBER", w())]], SELF),
+    "first lookup fails, a later admin exists": runVerify([[human2("a-first-dev", "MEMBER", w(), "2026-11-04T10:00:00Z", 1), human2("b-second-dev", "MEMBER", w(), "2026-11-04T11:00:00Z", 2)]], { ...SELF, perms: { "b-second-dev": "admin" } }),
+    "non-admin only": runVerify([[human2("dev-z", "MEMBER", w())]], { ...SELF, perms: { "dev-z": "write" } }),
+    "no waiver at all": runVerify([[human2("dev-z", "MEMBER", "Looks fine to me.")]], SELF),
+  };
+  assert.deepEqual(Object.fromEntries(Object.entries(runs).map(([k, r]) => [k, r.code])), {
+    "owner waiver": 0,
+    "org admin waiver": 0,
+    "admin among several": 0,
+    "lookup fails (404 with the path in gh's own error text)": 1,
+    "first lookup fails, a later admin exists": 1,
+    "non-admin only": 1,
+    "no waiver at all": 1,
+  });
+  for (const [where, r] of Object.entries(runs)) noIdentity(r.out, where);
+  assert.match(runs["lookup fails (404 with the path in gh's own error text)"].out, /Could not verify the commenter's permission/);
+  assert.match(runs["owner waiver"].out, /Waiver accepted from a repo admin for a{7}\./);
+});
+
+test("self-edit verify: the lookup still happens with the login, only its error text is hidden", () => {
+  const r = runVerify([[human2("orgowner-x", "MEMBER", waiver())]], SELF);
+  assert.deepEqual(lookups(r), ["api repos/o/r/collaborators/orgowner-x/permission --jq .permission"]);
+  assert.equal(r.code, 1);
+});
+
+test("no template prints a login, name or email: scan of every echo, annotation and core.* call", () => {
+  const OUTPUT = /(\becho\b|::(error|warning|notice)|\bcore\.(info|notice|error|warning|setFailed)\b|GITHUB_STEP_SUMMARY)/;
+  const PERSONAL = /(\$\{?(login|waiver_by|actor|author|email|GITHUB_ACTOR)\b|github\.(actor|triggering_actor)|\.user\.login|\.author\b|user\.name|\bemail\b|\b(login|actor)\b)/i;
+  const names = fs.readdirSync(path.join(ROOT, "templates")).filter((n) => n.endsWith(".yml") && n !== "dependabot.yml");
+  assert.ok(names.length >= 6);
+  for (const n of names) {
+    const lines = fs.readFileSync(path.join(ROOT, "templates", n), "utf8").split("\n");
+    lines.forEach((l, i) => {
+      if (/^\s*#/.test(l)) return;
+      if (OUTPUT.test(l)) assert.ok(!PERSONAL.test(l), `${n}:${i + 1} prints something personal: ${l.trim().slice(0, 140)}`);
+    });
+  }
 });
 
 test("self-edit verify: no waiver fails with the specific message", () => {
@@ -411,7 +469,7 @@ test("self-edit verify: a bot never waives, even with OWNER association or admin
 test("self-edit verify: one admin among several commenters is enough; a user who is not admin does not block it", () => {
   const r = runVerify([[human2("dev", "MEMBER", waiver(), "2026-11-04T10:00:00Z", 1), human2("orgowner", "MEMBER", waiver(), "2026-11-04T11:00:00Z", 2)]], { ...SELF, perms: { dev: "write", orgowner: "admin" } });
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /orgowner waived it/);
+  assert.match(r.out, /Waiver accepted from a repo admin for a{7}\./);
 });
 
 test("self-edit verify: the waiver must be a line of its own, exactly", () => {

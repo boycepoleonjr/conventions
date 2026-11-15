@@ -124,8 +124,9 @@ jobs:
             while read -r login assoc; do
               [[ "$login" =~ ^[A-Za-z0-9-]+$ ]] || continue
               if [ "$assoc" = "OWNER" ]; then waiver_by="$login"; break; fi
-              if ! perm=$(gh api "repos/$REPO/collaborators/$login/permission" --jq .permission); then
-                echo "::error::Could not look up the permission of $login on $REPO to check their review-waiver. Re-run the job."
+              # The CLI's own error text can repeat the request path, which holds the login, so its stderr is not shown.
+              if ! perm=$(gh api "repos/$REPO/collaborators/$login/permission" --jq .permission 2>/dev/null); then
+                echo "::error::Could not verify the commenter's permission to check their review-waiver. Re-run the job."
                 exit 1
               fi
               if [ "$perm" = "admin" ]; then waiver_by="$login"; break; fi
@@ -134,7 +135,7 @@ jobs:
               echo "::error::This PR edits .github/workflows/claude-code-review.yml, so Claude cannot review it (the action refuses to run when the workflow differs from the default branch). An independent review is required. After it, a repository admin (the owner) must comment a line exactly 'review-waiver: $HEAD_SHA' on this PR. A waiver for an older commit, or from anyone without admin permission or any bot, does not count."
               exit 1
             fi
-            echo "::warning::No Claude review ran: this PR edits the review workflow. $waiver_by waived it for $HEAD_SHA."
+            echo "::warning::No Claude review ran: this PR edits the review workflow. Waiver accepted from a repo admin for ${HEAD_SHA:0:7}."
             exit 0
           fi
           # Newest bot comment that names the head SHA and carries a review-status line, so unrelated bot comments
