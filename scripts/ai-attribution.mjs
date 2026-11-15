@@ -90,7 +90,7 @@ export function scrubBody(body) {
 // BEGIN commitProblems
 export function commitProblems(c) {
   // `c` is one commit as returned by GET /repos/{owner}/{repo}/pulls/{number}/commits.
-  // Returns the reasons the commit carries AI authorship (an empty list when it is fine).
+  // Returns the reasons the commit carries AI authorship (an empty list when it is fine). A reason never contains personal data.
   const git = c.commit || {};
   const author = { name: git.author && git.author.name, email: git.author && git.author.email };
   const committer = { name: git.committer && git.committer.name, email: git.committer && git.committer.email };
@@ -104,12 +104,13 @@ export function commitProblems(c) {
   const merge = (c.parents || []).length > 1;
   if (merge && (email(committer.email) === "noreply@github.com" || norm(c.committer && c.committer.login) === "web-flow")) return [];
   const problems = [];
+  // The reasons name the tool and the role only, never the email, name or login that matched: those can be a person's
+  // (anyone at a matched domain), and the reasons go to Actions logs and annotations.
   const who = (role, p, extra) => {
     const byEmail = agentOf({ email: p.email });
-    if (byEmail) problems.push(`${role} email is ${email(p.email)} (${byEmail})`);
+    if (byEmail) problems.push(`${role} email belongs to ${byEmail}`);
     const byName = agentOf({ name: p.name, login: extra });
-    const shown = String(p.name || extra || "").trim();
-    if (byName) problems.push(`${role} name is "${shown}"` + (norm(shown) === byName.toLowerCase() ? "" : ` (${byName})`));
+    if (byName) problems.push(`${role} name or login is ${byName}`);
   };
   who("author", author, login);
   who("committer", committer, c.committer && c.committer.login);

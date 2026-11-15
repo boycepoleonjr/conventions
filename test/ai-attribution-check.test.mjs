@@ -49,14 +49,14 @@ test("a commit by the owner is fine", () => {
 
 test("author or committer email noreply@anthropic.com is flagged", () => {
   const a = commitProblems(commit({ commit: { author: { name: "Someone", email: "noreply@anthropic.com" } } }));
-  assert.deepEqual(a, ["author email is noreply@anthropic.com (Claude)"]);
+  assert.deepEqual(a, ["author email belongs to Claude"]);
   const c = commitProblems(commit({ commit: { committer: { name: "Someone", email: "NoReply@Anthropic.com" } } }));
-  assert.deepEqual(c, ["committer email is noreply@anthropic.com (Claude)"]);
+  assert.deepEqual(c, ["committer email belongs to Claude"]);
 });
 
 test("author name Claude is flagged, other names containing it are not", () => {
-  assert.deepEqual(commitProblems(commit({ commit: { author: { name: "Claude", email: "x@example.com" } } })), ['author name is "Claude"']);
-  assert.deepEqual(commitProblems(commit({ commit: { author: { name: "claude", email: "x@example.com" } } })), ['author name is "claude"']);
+  assert.deepEqual(commitProblems(commit({ commit: { author: { name: "Claude", email: "x@example.com" } } })), ["author name or login is Claude"]);
+  assert.deepEqual(commitProblems(commit({ commit: { author: { name: "claude", email: "x@example.com" } } })), ["author name or login is Claude"]);
   assert.deepEqual(commitProblems(commit({ commit: { author: { name: "Claude Debussy", email: "x@example.com" } } })), []);
 });
 
@@ -167,16 +167,16 @@ test("agents: every listed identity is flagged by author name, by author email, 
     const viaEmail = commitProblems(byAuthor("Someone", email));
     const viaCommitterName = commitProblems(byCommitter(name, "human@example.com"));
     const viaCommitterEmail = commitProblems(byCommitter("Someone", email));
-    assert.ok(viaName.length === 1 && viaName[0].startsWith("author name is"), `${name} as author name: ${viaName}`);
-    assert.ok(viaEmail.length === 1 && viaEmail[0] === `author email is ${email.toLowerCase()} (${label})`, `${email} as author email: ${viaEmail}`);
-    assert.ok(viaCommitterName.length === 1 && viaCommitterName[0].startsWith("committer name is"), `${name} as committer name: ${viaCommitterName}`);
-    assert.ok(viaCommitterEmail.length === 1 && viaCommitterEmail[0].startsWith("committer email is"), `${email} as committer email: ${viaCommitterEmail}`);
+    assert.deepEqual(viaName, [`author name or login is ${label}`], `${name} as author name`);
+    assert.deepEqual(viaEmail, [`author email belongs to ${label}`], `${email} as author email`);
+    assert.deepEqual(viaCommitterName, [`committer name or login is ${label}`], `${name} as committer name`);
+    assert.deepEqual(viaCommitterEmail, [`committer email belongs to ${label}`], `${email} as committer email`);
   }
 });
 
 test("agents: any @openai.com address is flagged as an author or committer email (a human at that domain would be too)", () => {
-  assert.deepEqual(commitProblems(byAuthor("Someone", "bot@openai.com")), ["author email is bot@openai.com (Codex)"]);
-  assert.deepEqual(commitProblems(byCommitter("Someone", "BOT@OpenAI.com")), ["committer email is bot@openai.com (Codex)"]);
+  assert.deepEqual(commitProblems(byAuthor("Someone", "bot@openai.com")), ["author email belongs to Codex"]);
+  assert.deepEqual(commitProblems(byCommitter("Someone", "BOT@OpenAI.com")), ["committer email belongs to Codex"]);
   assert.deepEqual(commitProblems(byAuthor("Someone", "bot@notopenai.com")), []);
 });
 
@@ -340,15 +340,64 @@ test("script: a bad commit fails loudly, naming its SHA, why, and how to fix it"
   assert.equal(r.failed.length, 1);
   const msg = r.failed[0];
   assert.match(msg, /AI attribution check failed: 2 commit\(s\)/);
-  assert.ok(msg.includes("d".repeat(40)) && msg.includes("e".repeat(40)), "both bad SHAs are named");
-  assert.ok(!msg.includes("a".repeat(40)), "the good commit is not named");
+  assert.ok(msg.includes("ddddddd") && msg.includes("eeeeeee"), "both bad SHAs are named (short form)");
+  assert.ok(!msg.includes("aaaaaaa"), "the good commit is not named");
+  assert.ok(!msg.includes("d".repeat(8)), "only the short SHA is used");
   assert.match(msg, /re-push the same changes on a new branch with commits authored by the repo owner \(octo\)/);
   assert.match(msg, /no force push needed/);
   assert.match(msg, /git switch -c <new-branch> origin\/main/);
   assert.match(msg, /git merge --squash origin\/feat\/x/);
   assert.equal(r.errors.length, 2, "one annotation per bad commit");
-  assert.ok(r.errors[0].startsWith("d".repeat(40)) && r.errors[0].includes("feat: x") && r.errors[0].includes("Co-Authored-By"));
-  assert.ok(r.errors[1].startsWith("e".repeat(40)) && r.errors[1].includes("Claude-Session"));
+  assert.equal(r.errors[0], "ddddddd: author email belongs to Claude; author name or login is Claude; message has a Co-Authored-By trailer naming Claude");
+  assert.equal(r.errors[1], "eeeeeee: message has a Claude-Session trailer");
+});
+
+// ---- no personal data in diagnostics (Codex P1 on v1.9.1) -----------------------------------------------------------------
+
+const PERSONAL = [
+  ["jane.doe@openai.com", "Jane Doe", "janedoe"],
+  ["Jane.Doe+work@OpenAI.com", "J. Doe", "jdoe"],
+  ["noreply@anthropic.com", "Some Person", "someperson"],
+  ["198982749+Copilot@users.noreply.github.com", "Alex Example", "alexexample"],
+  ["161369871+google-labs-jules[bot]@users.noreply.github.com", "Sam Example", "samexample"],
+  ["cursoragent@cursor.com", "Pat Example", "patexample"],
+  ["codex@openai.com", "Codex", "codex"],
+];
+const LEAKS = (email, name, login) => [email, email.toLowerCase(), email.split("@")[0], name, login].filter((v) => v.length > 5 || /@/.test(v));
+
+test("diagnostics: no reason ever contains the matched email, name or login (function level)", () => {
+  for (const [email, name, login] of PERSONAL) {
+    for (const problems of [
+      commitProblems(commit({ author: { login }, commit: { author: { name, email }, committer: HUMAN } })),
+      commitProblems(commit({ commit: { author: HUMAN, committer: { name, email } } })),
+      commitProblems(commit({ author: { login }, commit: { author: { name, email }, committer: { name, email } } })),
+    ]) {
+      assert.ok(problems.length > 0, `${email} is flagged`);
+      for (const p of problems) {
+        for (const leak of LEAKS(email, name, login)) assert.ok(!p.toLowerCase().includes(leak.toLowerCase()), `"${p}" repeats ${leak}`);
+        assert.ok(!/@/.test(p), `"${p}" has an @`);
+      }
+    }
+  }
+});
+
+test("diagnostics: nothing the script logs or annotates contains the matched email, name or login", async () => {
+  for (const [email, name, login] of PERSONAL) {
+    const flagged = commit({ sha: "9".repeat(40), author: { login }, commit: { message: "feat: x", author: { name, email }, committer: { name, email } } });
+    const r = await run([commit(), flagged]);
+    assert.equal(r.failed.length, 1, email);
+    const everything = [...r.errors, ...r.info, ...r.failed].join("\n");
+    for (const leak of LEAKS(email, name, login)) assert.ok(!everything.toLowerCase().includes(leak.toLowerCase()), `output repeats ${leak}`);
+    assert.ok(r.errors[0].startsWith("9999999: "), "the commit is named by its short SHA");
+    assert.ok(!everything.includes("9".repeat(8)), "the full SHA is not printed");
+  }
+});
+
+test("diagnostics: the commit subject is not printed either", async () => {
+  const flagged = commit({ sha: "8".repeat(40), commit: { message: "feat: contact jane.doe@example.com about this", author: { name: "Codex", email: "codex@openai.com" }, committer: HUMAN } });
+  const r = await run([flagged]);
+  const everything = [...r.errors, ...r.info, ...r.failed].join("\n");
+  assert.ok(!everything.includes("jane.doe") && !everything.includes("contact"));
 });
 
 test("script: a PR with commits by several agents fails once, naming every SHA and tool", async () => {
@@ -356,8 +405,9 @@ test("script: a PR with commits by several agents fails once, naming every SHA a
   const b = commit({ sha: "2".repeat(40), commit: { author: HUMAN, committer: HUMAN, message: "feat: y\n\nCo-authored-by: Copilot <198982749+Copilot@users.noreply.github.com>" } });
   const r = await run([commit(), a, b]);
   assert.equal(r.failed.length, 1);
-  assert.ok(r.failed[0].includes("1".repeat(40)) && r.failed[0].includes("2".repeat(40)));
-  assert.ok(r.errors[0].includes("(Codex)") && r.errors[1].includes("naming Copilot"));
+  assert.ok(r.failed[0].includes("1111111") && r.failed[0].includes("2222222"));
+  assert.equal(r.errors[0], "1111111: author email belongs to Codex; author name or login is Codex");
+  assert.equal(r.errors[1], "2222222: message has a Co-Authored-By trailer naming Copilot");
 });
 
 test("script: a commit that only quotes attribution syntax in prose does not fail the PR", async () => {

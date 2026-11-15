@@ -70,7 +70,7 @@ jobs:
             // BEGIN commitProblems
             function commitProblems(c) {
               // `c` is one commit as returned by GET /repos/{owner}/{repo}/pulls/{number}/commits.
-              // Returns the reasons the commit carries AI authorship (an empty list when it is fine).
+              // Returns the reasons the commit carries AI authorship (an empty list when it is fine). A reason never contains personal data.
               const git = c.commit || {};
               const author = { name: git.author && git.author.name, email: git.author && git.author.email };
               const committer = { name: git.committer && git.committer.name, email: git.committer && git.committer.email };
@@ -84,12 +84,13 @@ jobs:
               const merge = (c.parents || []).length > 1;
               if (merge && (email(committer.email) === "noreply@github.com" || norm(c.committer && c.committer.login) === "web-flow")) return [];
               const problems = [];
+              // The reasons name the tool and the role only, never the email, name or login that matched: those can be a person's
+              // (anyone at a matched domain), and the reasons go to Actions logs and annotations.
               const who = (role, p, extra) => {
                 const byEmail = agentOf({ email: p.email });
-                if (byEmail) problems.push(`${role} email is ${email(p.email)} (${byEmail})`);
+                if (byEmail) problems.push(`${role} email belongs to ${byEmail}`);
                 const byName = agentOf({ name: p.name, login: extra });
-                const shown = String(p.name || extra || "").trim();
-                if (byName) problems.push(`${role} name is "${shown}"` + (norm(shown) === byName.toLowerCase() ? "" : ` (${byName})`));
+                if (byName) problems.push(`${role} name or login is ${byName}`);
               };
               who("author", author, login);
               who("committer", committer, c.committer && c.committer.login);
@@ -132,13 +133,14 @@ jobs:
               return;
             }
 
-            const bad = commits.map((c) => ({ sha: c.sha, subject: String((c.commit && c.commit.message) || "").split("\n")[0], problems: commitProblems(c) })).filter((c) => c.problems.length > 0);
+            // Logs and annotations name a bad commit by its short SHA and say why by role and tool. They never repeat an email, name or login from the commit.
+            const bad = commits.map((c) => ({ sha: String(c.sha).slice(0, 7), problems: commitProblems(c) })).filter((c) => c.problems.length > 0);
             if (bad.length === 0) {
               core.info("No commit carries AI authorship.");
               return;
             }
 
-            for (const c of bad) core.error(`${c.sha} (${c.subject}): ${c.problems.join("; ")}`);
+            for (const c of bad) core.error(`${c.sha}: ${c.problems.join("; ")}`);
             const base = pr.base.ref;
             const head = pr.head.ref;
             const fix = [
