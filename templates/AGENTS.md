@@ -11,6 +11,7 @@ Instructions for any coding agent (Claude Code, Cursor, Codex) and for people wo
 {{pr_policy_line}}
 - PR description follows `.github/pull_request_template.md`: what, why, every command run with its real pass/fail, risk, and decisions needed.
 - Bug fixes add regression tests for every path of the fix (empty, invalid, valid input, and any guard you add), not just the reported repro. See `.claude/skills/fix-with-regression-tests`.
+- Files managed by conventions sync are tested upstream in boycepoleonjr/conventions; sync-only PRs should not be asked to add repo-level tests for them.
 - Dependency changes are declared openly in the manifest. Never hide a version change in `overrides` or `resolutions` while the manifest claims a different range. See `.claude/skills/dependency-update`.
 - Do not pin or cap versions to satisfy conventions or to avoid work; the lockfile and Dependabot own versions. Pin or set a floor only for a documented major security issue, and declare it in the manifest.
 - Non-trivial work gets a plan in `docs/specs/` first. End each session with a handoff in `docs/handoffs/YYYY-MM-DD-<topic>.md`.
@@ -42,6 +43,7 @@ Also check:
 - Stale closures in React effects, intervals and handlers; missing cleanup.
 - Bug fixes without a regression test for each path of the fix.
 - Non-trivial features without a plan in `docs/specs/`.
+- In a workflow that runs `anthropics/claude-code-action`, an `actions/checkout` step without `persist-credentials: false`. Any checkout version is fine; flag the missing setting, not the version.
 
 Do not flag behavior-preserving refactors (renames, function style, reordering).
 
